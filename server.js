@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { YoutubeTranscript } = require('youtube-transcript');
 const path = require('path');
 
 const app = express();
@@ -31,7 +30,7 @@ function extractVideoId(url) {
 async function getTranscript(videoId) {
   try {
     const response = await fetch(
-      `https://youtube-transcripts.p.rapidapi.com/youtube/transcript?url=https://www.youtube.com/watch?v=${videoId}&chunkSize=500&lang=en`,
+      `https://youtube-transcripts.p.rapidapi.com/youtube/transcript?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&chunkSize=500&lang=en`,
       {
         method: 'GET',
         headers: {
