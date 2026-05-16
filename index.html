@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTube Quiz Generator — AI-Powered Learning</title>
+  <meta name="description" content="Paste any YouTube video link and let AI analyze the actual video content to generate interactive quiz questions. Powered by Groq AI." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ═══ Animated Background ═══ -->
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow--1" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow--2" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow--3" aria-hidden="true"></div>
+
+  <!-- ═══ Main App Container ═══ -->
+  <div class="app">
+
+    <!-- ── Navbar ── -->
+    <nav class="navbar" id="navbar">
+      <div class="navbar__brand">
+        <div class="navbar__icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+        </div>
+        <span class="navbar__title">QuizTube<span class="navbar__dot">AI</span></span>
+      </div>
+      <div class="navbar__actions">
+        <a href="https://github.com" target="_blank" class="navbar__link" title="GitHub">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+      </div>
+    </nav>
+
+    <!-- ── Hero Section ── -->
+    <section class="hero" id="heroSection">
+      <div class="hero__badge">
+        <span class="hero__badge-dot"></span>
+        Powered by Groq AI — Blazing Fast
+      </div>
+      <h1 class="hero__title">
+        Turn any <span class="hero__gradient">YouTube Video</span><br/>
+        into an Interactive Quiz
+      </h1>
+      <p class="hero__subtitle">
+        Paste a YouTube link. Our AI reads the actual video transcript, identifies key topics, 
+        and generates smart quiz questions — in seconds.
+      </p>
+
+      <!-- ── URL Input Card ── -->
+      <div class="input-card" id="inputCard">
+        <div class="input-card__glow" aria-hidden="true"></div>
+        <div class="input-card__inner">
+          <div class="input-card__url-row">
+            <div class="input-card__icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.43z"/>
+                <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/>
+              </svg>
+            </div>
+            <input 
+              type="url" 
+              id="urlInput" 
+              class="input-card__input" 
+              placeholder="Paste YouTube link here... e.g. https://youtube.com/watch?v=..." 
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="pasteBtn" class="input-card__paste" title="Paste from clipboard">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="input-card__options">
+            <div class="option-group">
+              <label class="option-group__label" for="qCount">Questions</label>
+              <select id="qCount" class="option-group__select">
+                <option value="5">5</option>
+                <option value="8" selected>8</option>
+                <option value="10">10</option>
+                <option value="15">15</option>
+              </select>
+            </div>
+            <div class="option-group">
+              <label class="option-group__label" for="difficulty">Difficulty</label>
+              <select id="difficulty" class="option-group__select">
+                <option value="easy">Easy</option>
+                <option value="medium" selected>Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+            <div class="option-group">
+              <label class="option-group__label" for="modelSelect">AI Model</label>
+              <select id="modelSelect" class="option-group__select">
+                <option value="llama-3.3-70b-versatile" selected>Llama 3.3 70B(moderate)</option>
+                <option value="openai/gpt-oss-120b">gpt-oss-120b(best)</option>
+                <option value="gemma2-9b-it">Gemma2 9B(moderate)</option>
+              </select>
+            </div>
+          </div>
+
+          <button id="generateBtn" class="input-card__submit" onclick="handleGenerate()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+            <span>Generate Quiz</span>
+            <div class="btn-shimmer" aria-hidden="true"></div>
+          </button>
+        </div>
+      </div>
+
+      <!-- ── How It Works ── -->
+      <div class="steps">
+        <div class="step">
+          <div class="step__num">1</div>
+          <div class="step__text">
+            <strong>Paste Link</strong>
+            <span>Any YouTube video URL</span>
+          </div>
+        </div>
+        <div class="step__arrow" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+        <div class="step">
+          <div class="step__num">2</div>
+          <div class="step__text">
+            <strong>AI Analyzes</strong>
+            <span>Reads video transcript</span>
+          </div>
+        </div>
+        <div class="step__arrow" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </div>
+        <div class="step">
+          <div class="step__num">3</div>
+          <div class="step__text">
+            <strong>Take Quiz</strong>
+            <span>Interactive questions</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Loading State ── -->
+    <section class="loading-section" id="loadingSection" style="display:none">
+      <div class="loading-card">
+        <div class="loading-card__animation">
+          <div class="pulse-ring"></div>
+          <div class="pulse-ring pulse-ring--2"></div>
+          <div class="pulse-ring pulse-ring--3"></div>
+          <div class="loading-card__brain">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9.5 2A3.5 3.5 0 0 0 6 5.5V6a3.5 3.5 0 0 0-.6 6.9 3.5 3.5 0 0 0 2.1 4.6V18a3 3 0 0 0 6 0v-1a3.5 3.5 0 0 0 2.1-4.6A3.5 3.5 0 0 0 15 6v-.5A3.5 3.5 0 0 0 11.5 2h-2z"/>
+              <path d="M6 8.5h9M6 12h9"/>
+            </svg>
+          </div>
+        </div>
+        <h3 class="loading-card__title" id="loadingTitle">Fetching Video Transcript...</h3>
+        <p class="loading-card__subtitle" id="loadingSubtitle">Reading the actual content from the video captions</p>
+        <div class="loading-card__progress">
+          <div class="loading-card__progress-bar" id="progressBar"></div>
+        </div>
+        <div class="loading-card__steps">
+          <div class="load-step active" id="ls1">
+            <div class="load-step__check">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <span>Extracting transcript</span>
+          </div>
+          <div class="load-step" id="ls2">
+            <div class="load-step__check">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <span>AI analyzing topics</span>
+          </div>
+          <div class="load-step" id="ls3">
+            <div class="load-step__check">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <span>Generating questions</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Error State ── -->
+    <div class="error-toast" id="errorToast" style="display:none">
+      <div class="error-toast__icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <p class="error-toast__msg" id="errorMsg"></p>
+      <button class="error-toast__close" onclick="hideError()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- ── Quiz Section ── -->
+    <section class="quiz-section" id="quizSection" style="display:none">
+
+      <!-- Video Info Bar -->
+      <div class="video-bar" id="videoBar">
+        <div class="video-bar__thumb">
+          <img id="videoThumb" src="" alt="Video thumbnail" />
+          <div class="video-bar__play">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
+        </div>
+        <div class="video-bar__info">
+          <h3 id="videoTitle" class="video-bar__title"></h3>
+          <p id="videoTopic" class="video-bar__topic"></p>
+        </div>
+        <button class="video-bar__new" onclick="resetAll()" title="New Quiz">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          <span>New Quiz</span>
+        </button>
+      </div>
+
+      <!-- Topics Covered -->
+      <div class="topics-strip" id="topicsStrip"></div>
+
+      <!-- Progress Bar -->
+      <div class="quiz-progress" id="quizProgress">
+        <div class="quiz-progress__bar">
+          <div class="quiz-progress__fill" id="quizProgressFill"></div>
+        </div>
+        <span class="quiz-progress__text" id="quizProgressText">0 / 0</span>
+      </div>
+
+      <!-- Question Cards -->
+      <div id="questionsContainer"></div>
+
+      <!-- Score Card -->
+      <div class="score-section" id="scoreSection" style="display:none">
+        <div class="score-card">
+          <div class="score-card__confetti" id="confettiCanvas" aria-hidden="true"></div>
+          <div class="score-card__ring">
+            <svg viewBox="0 0 120 120" class="score-card__svg">
+              <circle cx="60" cy="60" r="52" class="score-card__track"/>
+              <circle cx="60" cy="60" r="52" class="score-card__progress" id="scoreRing"/>
+            </svg>
+            <div class="score-card__percent" id="scorePercent">0%</div>
+          </div>
+          <h3 class="score-card__title" id="scoreTitle">Quiz Complete!</h3>
+          <p class="score-card__detail" id="scoreDetail"></p>
+          <p class="score-card__msg" id="scoreMsg"></p>
+          <div class="score-card__actions">
+            <button class="btn btn--outline" onclick="reviewAnswers()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              Review Answers
+            </button>
+            <button class="btn btn--primary" onclick="resetAll()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New Quiz
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
