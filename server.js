@@ -30,16 +30,28 @@ function extractVideoId(url) {
 // ── Fetch transcript from YouTube ──
 async function getTranscript(videoId) {
   try {
-    const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
-    if (!transcriptItems || transcriptItems.length === 0) {
-      throw new Error('No transcript available');
+    const response = await fetch(
+      `https://youtube-transcripts.p.rapidapi.com/youtube/transcript?url=https://www.youtube.com/watch?v=${videoId}&chunkSize=500&lang=en`,
+      {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-host': 'youtube-transcripts.p.rapidapi.com',
+          'x-rapidapi-key': process.env.RAPIDAPI_KEY
+        }
+      }
+    );
+
+    const data = await response.json();
+
+    if (!data.content || data.content.length === 0) {
+      throw new Error('No transcript available for this video.');
     }
-    // Combine all transcript segments into one text
-    const fullText = transcriptItems.map(item => item.text).join(' ');
-    // Truncate to ~8000 chars to stay within token limits
+
+    const fullText = data.content.map(c => c.text).join(' ');
     return fullText.length > 8000 ? fullText.substring(0, 8000) + '...' : fullText;
+
   } catch (error) {
-    throw new Error(`Could not fetch transcript: ${error.message}. Make sure the video has captions/subtitles enabled.`);
+    throw new Error(`Could not fetch transcript: ${error.message}`);
   }
 }
 
