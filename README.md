@@ -36,7 +36,10 @@ An AI-powered quiz generator that analyzes YouTube video transcripts and automat
 
 ```
 youtube-url-based-quiz-questions/
-├── index.html         # Frontend UI
+├── public folder
+      |---index.html
+      |---styles.css        # Frontend UI
+      |---script.js        
 ├── styles.css         # All styling
 ├── script.js          # Frontend logic (quiz rendering, score, confetti)
 ├── server.js          # Express backend (transcript fetch + Groq API)
