@@ -511,3 +511,152 @@ body {
   .score-card { padding: 32px 20px; }
   .score-card__actions { flex-direction: column; }
 }
+
+/* ── Mode Toggle ── */
+.mode-toggle {
+  display: flex; gap: 4px; margin-bottom: 16px;
+  background: var(--bg-primary); border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md); padding: 4px;
+}
+.mode-toggle__btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px 14px; border-radius: 8px; border: none;
+  background: transparent; color: var(--text-muted);
+  font-family: var(--font); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.mode-toggle__btn:hover { color: var(--text-secondary); }
+.mode-toggle__btn.active {
+  background: var(--bg-card); color: var(--text-primary);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.3);
+  border: 1px solid var(--border-light);
+}
+.mode-toggle__btn.active svg { stroke: var(--accent-light); }
+
+/* Quiz-only options hidden in notes mode */
+.quiz-only { transition: opacity 0.2s, max-height 0.3s; }
+.quiz-only.hidden { opacity: 0; pointer-events: none; max-height: 0; overflow: hidden; margin: 0; }
+
+/* ── Notes Section ── */
+.notes-section { animation: fadeUp 0.5s ease; }
+
+.notes-summary {
+  padding: 18px 20px; border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(59,130,246,0.05));
+  border: 1px solid var(--border-accent);
+  font-size: 14px; line-height: 1.7; color: var(--text-secondary);
+  margin-bottom: 20px; animation: fadeUp 0.5s ease 0.15s both;
+}
+.notes-summary strong { color: var(--accent-light); display: block; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; }
+
+/* ── Note Section Cards ── */
+.note-card {
+  background: var(--bg-card); border: 1px solid var(--border-dim);
+  border-radius: var(--radius-lg); margin-bottom: 14px;
+  backdrop-filter: blur(20px); overflow: hidden;
+  animation: fadeUp 0.4s ease both;
+  transition: border-color 0.2s;
+}
+.note-card:hover { border-color: var(--border-light); }
+
+.note-card__header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; cursor: pointer;
+  border-bottom: 1px solid var(--border-dim);
+  transition: background 0.2s;
+}
+.note-card__header:hover { background: var(--bg-glass); }
+.note-card__header-left { display: flex; align-items: center; gap: 10px; }
+
+.note-card__icon {
+  width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 700;
+}
+.note-card__title { font-size: 15px; font-weight: 600; }
+.note-card__chevron {
+  color: var(--text-muted); transition: transform 0.25s;
+  display: flex; align-items: center;
+}
+.note-card.expanded .note-card__chevron { transform: rotate(180deg); }
+
+.note-card__body { padding: 0 20px; max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.2s; }
+.note-card.expanded .note-card__body { max-height: 2000px; padding: 18px 20px; }
+
+.note-card__content {
+  font-size: 14px; line-height: 1.75; color: var(--text-secondary);
+  margin-bottom: 14px; white-space: pre-wrap;
+}
+
+/* Bullet Points inside notes */
+.note-bullets { list-style: none; display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+.note-bullets li {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 13.5px; line-height: 1.6; color: var(--text-secondary);
+}
+.note-bullets li::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); flex-shrink: 0; margin-top: 7px;
+}
+
+/* Definitions inside note card */
+.note-defs { display: flex; flex-direction: column; gap: 8px; }
+.note-def-item {
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  background: var(--blue-dim); border-left: 3px solid var(--blue);
+}
+.note-def-item__term { font-size: 12px; font-weight: 700; color: var(--blue); margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.4px; }
+.note-def-item__def { font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+
+.note-section-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 8px;
+  padding-bottom: 4px; border-bottom: 1px solid var(--border-dim);
+}
+
+/* ── Key Takeaways ── */
+.notes-takeaways {
+  background: linear-gradient(135deg, rgba(34,197,94,0.07), rgba(34,197,94,0.03));
+  border: 1px solid var(--green-border); border-radius: var(--radius-lg);
+  padding: 20px; margin-top: 4px; margin-bottom: 14px;
+  animation: fadeUp 0.4s ease both;
+}
+.notes-takeaways__title {
+  font-size: 14px; font-weight: 700; color: var(--green);
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.notes-takeaways__list { display: flex; flex-direction: column; gap: 8px; }
+.notes-takeaways__item {
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 13.5px; line-height: 1.6; color: var(--text-secondary);
+}
+.notes-takeaways__num {
+  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  background: var(--green); color: #fff;
+  display: grid; place-items: center; font-size: 11px; font-weight: 700;
+}
+
+/* ── Glossary ── */
+.notes-glossary {
+  background: var(--bg-card); border: 1px solid var(--border-dim);
+  border-radius: var(--radius-lg); padding: 20px; margin-bottom: 40px;
+  animation: fadeUp 0.4s ease both;
+}
+.notes-glossary__title {
+  font-size: 14px; font-weight: 700; color: var(--accent-light);
+  margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+}
+.glossary-grid { display: grid; gap: 8px; }
+.glossary-item {
+  display: grid; grid-template-columns: 160px 1fr; gap: 12px;
+  padding: 10px 14px; border-radius: var(--radius-sm);
+  background: var(--bg-glass); border: 1px solid var(--border-dim);
+  font-size: 13px; align-items: start;
+}
+.glossary-item__term { font-weight: 600; color: var(--accent-light); }
+.glossary-item__def { color: var(--text-secondary); line-height: 1.55; }
+
+@media (max-width: 640px) {
+  .glossary-item { grid-template-columns: 1fr; gap: 4px; }
+  .mode-toggle__btn { font-size: 12px; padding: 8px 10px; gap: 5px; }
+}

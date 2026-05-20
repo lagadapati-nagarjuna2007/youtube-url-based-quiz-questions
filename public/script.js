@@ -445,3 +445,278 @@ window.addEventListener('scroll', () => {
   }
   lastScroll = scrollY;
 });
+
+// ══════════════════════════════════════════
+// NOTES MODE — Additional Logic
+// ══════════════════════════════════════════
+
+// ── Current Mode ──
+let currentMode = 'quiz'; // 'quiz' | 'notes'
+let notesData = null;
+
+// ── Mode Toggle ──
+function setMode(mode) {
+  currentMode = mode;
+  const quizOpts = document.querySelector('.input-card__options');
+
+  if (mode === 'quiz') {
+    $('modeQuiz').classList.add('active');
+    $('modeNotes').classList.remove('active');
+    quizOpts.style.display = 'flex';
+    $('generateBtnText').textContent = 'Generate Quiz';
+  } else {
+    $('modeNotes').classList.add('active');
+    $('modeQuiz').classList.remove('active');
+    quizOpts.style.display = 'none';
+    $('generateBtnText').textContent = 'Generate Notes';
+  }
+}
+
+// ── Override handleGenerate to support notes mode ──
+const _originalHandleGenerate = handleGenerate;
+window.handleGenerate = async function() {
+  if (currentMode === 'notes') {
+    await handleGenerateNotes();
+  } else {
+    await _originalHandleGenerate();
+  }
+};
+
+// ── Notes Loading Messages ──
+function showNotesLoading() {
+  $('heroSection').style.display = 'none';
+  $('quizSection').style.display = 'none';
+  $('notesSection').style.display = 'none';
+  $('loadingSection').style.display = 'flex';
+
+  ['ls1', 'ls2', 'ls3'].forEach(id => $(id).className = 'load-step');
+  $('ls1').classList.add('active');
+  $('progressBar').style.width = '10%';
+  $('loadingTitle').textContent = 'Fetching Video Transcript...';
+  $('loadingSubtitle').textContent = 'Reading the actual content from the video captions';
+
+  setTimeout(() => {
+    $('ls1').className = 'load-step done';
+    $('ls2').className = 'load-step active';
+    $('progressBar').style.width = '45%';
+    $('loadingTitle').textContent = 'AI Analyzing Content...';
+    $('loadingSubtitle').textContent = 'Identifying key concepts, definitions, and topics';
+  }, 1800);
+
+  setTimeout(() => {
+    $('ls2').className = 'load-step done';
+    $('ls3').className = 'load-step active';
+    $('progressBar').style.width = '78%';
+    $('loadingTitle').textContent = 'Structuring Notes...';
+    $('loadingSubtitle').textContent = 'Organizing into sections, definitions, and takeaways';
+  }, 3600);
+}
+
+// ── Generate Notes ──
+async function handleGenerateNotes() {
+  const url = $('urlInput').value.trim();
+  hideError();
+  notesData = null;
+
+  if (!url) { showError('Please paste a YouTube URL first.'); return; }
+
+  const videoId = extractVideoId(url);
+  if (!videoId) {
+    showError('Invalid YouTube URL. Please paste a valid link like https://youtube.com/watch?v=...');
+    return;
+  }
+
+  const model = $('modelSelect').value;
+  $('generateBtn').disabled = true;
+  showNotesLoading();
+
+  try {
+    const response = await fetch('/api/generate-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, model })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to generate notes');
+    if (!data.notes || !data.notes.sections || data.notes.sections.length === 0)
+      throw new Error('No notes were generated. Try a different video.');
+
+    notesData = data.notes;
+    hideLoading();
+    renderNotes(data.videoId);
+
+  } catch (e) {
+    hideLoading();
+    $('heroSection').style.display = 'block';
+    showError(e.message || 'Something went wrong. Please try again.');
+  } finally {
+    $('generateBtn').disabled = false;
+  }
+}
+
+// ── Render Notes ──
+function renderNotes(videoId) {
+  $('notesSection').style.display = 'block';
+  $('quizSection').style.display = 'none';
+
+  // Video bar
+  $('notesVideoThumb').src = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+  $('notesVideoTitle').textContent = notesData.videoTitle || 'YouTube Video';
+  $('notesVideoTopic').textContent = `Topic: ${notesData.topic || 'General'}`;
+
+  // Topics strip
+  const topics = notesData.topicsCovered || [];
+  $('notesTopicsStrip').innerHTML = topics.map(t => `<span class="topic-chip">${escHtml(t)}</span>`).join('');
+
+  // Summary
+  if (notesData.summary) {
+    $('notesSummary').innerHTML = `<strong>📋 Overview</strong>${escHtml(notesData.summary)}`;
+    $('notesSummary').style.display = 'block';
+  }
+
+  // Sections
+  const container = $('notesContainer');
+  container.innerHTML = '';
+
+  (notesData.sections || []).forEach((section, i) => {
+    const card = document.createElement('div');
+    card.className = 'note-card' + (i === 0 ? ' expanded' : '');
+    card.id = `notecard-${i}`;
+    card.style.animationDelay = `${i * 0.07}s`;
+
+    const hasBullets = section.bulletPoints && section.bulletPoints.length > 0;
+    const hasDefs = section.definitions && section.definitions.length > 0;
+
+    card.innerHTML = `
+      <div class="note-card__header" onclick="toggleNoteCard(${i})">
+        <div class="note-card__header-left">
+          <div class="note-card__icon">${i + 1}</div>
+          <span class="note-card__title">${escHtml(section.title || `Section ${i + 1}`)}</span>
+        </div>
+        <span class="note-card__chevron">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+      </div>
+      <div class="note-card__body">
+        ${section.content ? `<p class="note-card__content">${escHtml(section.content)}</p>` : ''}
+        ${hasBullets ? `
+          <div class="note-section-label">Key Points</div>
+          <ul class="note-bullets">
+            ${section.bulletPoints.map(bp => `<li>${escHtml(bp)}</li>`).join('')}
+          </ul>
+        ` : ''}
+        ${hasDefs ? `
+          <div class="note-section-label">Definitions</div>
+          <div class="note-defs">
+            ${section.definitions.map(d => `
+              <div class="note-def-item">
+                <div class="note-def-item__term">${escHtml(d.term)}</div>
+                <div class="note-def-item__def">${escHtml(d.definition)}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+    container.appendChild(card);
+  });
+
+  // Key Takeaways
+  if (notesData.keyTakeaways && notesData.keyTakeaways.length > 0) {
+    const takeaways = $('notesTakeaways');
+    takeaways.innerHTML = `
+      <div class="notes-takeaways__title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Key Takeaways
+      </div>
+      <div class="notes-takeaways__list">
+        ${notesData.keyTakeaways.map((t, i) => `
+          <div class="notes-takeaways__item">
+            <div class="notes-takeaways__num">${i + 1}</div>
+            <span>${escHtml(t)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    takeaways.style.display = 'block';
+  }
+
+  // Glossary
+  if (notesData.importantTerms && notesData.importantTerms.length > 0) {
+    const glossary = $('notesGlossary');
+    glossary.innerHTML = `
+      <div class="notes-glossary__title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        Glossary of Terms
+      </div>
+      <div class="glossary-grid">
+        ${notesData.importantTerms.map(t => `
+          <div class="glossary-item">
+            <span class="glossary-item__term">${escHtml(t.term)}</span>
+            <span class="glossary-item__def">${escHtml(t.definition)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    glossary.style.display = 'block';
+  }
+
+  $('notesSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Toggle Note Card Accordion ──
+function toggleNoteCard(i) {
+  const card = $(`notecard-${i}`);
+  card.classList.toggle('expanded');
+}
+
+// ── Download Notes as Text ──
+function downloadNotes() {
+  if (!notesData) return;
+  let text = `# ${notesData.videoTitle || 'Study Notes'}\n`;
+  text += `Topic: ${notesData.topic || ''}\n`;
+  text += `\n## Overview\n${notesData.summary || ''}\n`;
+
+  (notesData.sections || []).forEach((s, i) => {
+    text += `\n## ${i + 1}. ${s.title}\n`;
+    if (s.content) text += `${s.content}\n`;
+    if (s.bulletPoints?.length) {
+      text += '\nKey Points:\n';
+      s.bulletPoints.forEach(bp => text += `  • ${bp}\n`);
+    }
+    if (s.definitions?.length) {
+      text += '\nDefinitions:\n';
+      s.definitions.forEach(d => text += `  ${d.term}: ${d.definition}\n`);
+    }
+  });
+
+  if (notesData.keyTakeaways?.length) {
+    text += '\n## Key Takeaways\n';
+    notesData.keyTakeaways.forEach((t, i) => text += `${i + 1}. ${t}\n`);
+  }
+
+  if (notesData.importantTerms?.length) {
+    text += '\n## Glossary\n';
+    notesData.importantTerms.forEach(t => text += `${t.term}: ${t.definition}\n`);
+  }
+
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${(notesData.videoTitle || 'notes').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`;
+  a.click();
+}
+
+// ── Patch resetAll to also clear notes ──
+const _origResetAll = resetAll;
+window.resetAll = function() {
+  _origResetAll();
+  notesData = null;
+  $('notesSection').style.display = 'none';
+  $('notesContainer').innerHTML = '';
+  $('notesTopicsStrip').innerHTML = '';
+  $('notesSummary').innerHTML = '';
+  $('notesTakeaways').style.display = 'none';
+  $('notesGlossary').style.display = 'none';
+};

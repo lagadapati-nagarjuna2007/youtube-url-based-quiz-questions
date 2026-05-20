@@ -101,20 +101,28 @@
             <div class="option-group">
               <label class="option-group__label" for="modelSelect">AI Model</label>
               <select id="modelSelect" class="option-group__select">
-                <option value="llama-3.3-70b-versatile" selected>Llama 3.3 70B(moderate)</option>
                 <option value="openai/gpt-oss-120b">gpt-oss-120b(best)</option>
+                <option value="llama-3.3-70b-versatile" selected>Llama 3.3 70B(moderate)</option>
                 <option value="gemma2-9b-it">Gemma2 9B(moderate)</option>
               </select>
             </div>
           </div>
 
+          <!-- Mode Toggle -->
+          <div class="mode-toggle" id="modeToggle">
+            <button class="mode-toggle__btn active" id="modeQuiz" onclick="setMode('quiz')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+              Generate Quiz
+            </button>
+            <button class="mode-toggle__btn" id="modeNotes" onclick="setMode('notes')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              Generate Notes
+            </button>
+          </div>
+
           <button id="generateBtn" class="input-card__submit" onclick="handleGenerate()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
-            <span>Generate Quiz</span>
+            <svg id="generateBtnIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            <span id="generateBtnText">Generate Quiz</span>
             <div class="btn-shimmer" aria-hidden="true"></div>
           </button>
         </div>
@@ -266,6 +274,50 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- ── Notes Section ── -->
+    <section class="notes-section" id="notesSection" style="display:none">
+
+      <!-- Video Info Bar (shared) -->
+      <div class="video-bar" id="notesVideoBar">
+        <div class="video-bar__thumb">
+          <img id="notesVideoThumb" src="" alt="Video thumbnail" />
+          <div class="video-bar__play">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
+        </div>
+        <div class="video-bar__info">
+          <h3 id="notesVideoTitle" class="video-bar__title"></h3>
+          <p id="notesVideoTopic" class="video-bar__topic"></p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="video-bar__new" onclick="downloadNotes()" id="downloadNotesBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download</span>
+          </button>
+          <button class="video-bar__new" onclick="resetAll()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            <span>New</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Notes Topics -->
+      <div class="topics-strip" id="notesTopicsStrip"></div>
+
+      <!-- Notes Summary -->
+      <div class="notes-summary" id="notesSummary"></div>
+
+      <!-- Notes Body -->
+      <div id="notesContainer"></div>
+
+      <!-- Key Takeaways -->
+      <div class="notes-takeaways" id="notesTakeaways" style="display:none"></div>
+
+      <!-- Glossary -->
+      <div class="notes-glossary" id="notesGlossary" style="display:none"></div>
+
     </section>
 
   </div>
