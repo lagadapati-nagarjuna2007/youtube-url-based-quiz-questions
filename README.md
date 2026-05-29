@@ -5,6 +5,7 @@
 https://youtube-url-based-quiz-questions.onrender.com/
 
 ---
+## 📌 problem statement 
 
 An AI-powered learning tool that analyzes YouTube video transcripts to automatically generate **interactive quiz questions** or **structured study notes**. Just paste a YouTube URL, pick your mode, and let the AI do the rest!
 
