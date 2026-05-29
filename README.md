@@ -1,5 +1,7 @@
 # 🎯 YouTube Quiz & Notes Generator
 
+🔗 **Live Demo:** [Live Deploy Link](DEPLOY_LINK)
+
 An AI-powered learning tool that analyzes YouTube video transcripts to automatically generate **interactive quiz questions** or **structured study notes**. Just paste a YouTube URL, pick your mode, and let the AI do the rest!
 
 ---
@@ -21,7 +23,7 @@ An AI-powered learning tool that analyzes YouTube video transcripts to automatic
 - 📖 **Definitions** — extracts and explains every technical term per section
 - ⭐ **Key Takeaways** — numbered summary of the most important concepts
 - 📚 **Full Glossary** — all important terms and definitions in one place
-- ⬇️ **Download as TXT** — save your notes locally with one click
+- ⬇️ **Download as PDF** — save notes locally as a formatted, premium multi-page document (with cover page, headers, footers, page numbers, and custom glossary) using `html2canvas` and `jsPDF`
 - 🗂️ **Accordion layout** — expand/collapse sections for focused reading
 
 ### 🌐 General
@@ -97,7 +99,7 @@ AI generates structured notes in JSON format
         ↓
 Frontend renders sections, definitions, takeaways & glossary
         ↓
-User can read, expand/collapse sections, or download as TXT
+User can read, expand/collapse sections, or download as a paginated PDF
 ```
 
 ---
@@ -159,7 +161,7 @@ http://localhost:3000
 3. Choose an AI model
 4. Click **Generate Notes**
 5. Read through the structured sections, definitions, and takeaways
-6. Click **Download** to save notes as a `.txt` file
+6. Click **Download** to save notes as a formatted PDF document
 
 ---
 
