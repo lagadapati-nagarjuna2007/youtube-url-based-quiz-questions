@@ -660,3 +660,5 @@ body {
   .glossary-item { grid-template-columns: 1fr; gap: 4px; }
   .mode-toggle__btn { font-size: 12px; padding: 8px 10px; gap: 5px; }
 }
+/* PDF export spinner */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

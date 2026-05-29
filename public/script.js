@@ -671,41 +671,380 @@ function toggleNoteCard(i) {
   card.classList.toggle('expanded');
 }
 
-// ── Download Notes as Text ──
-function downloadNotes() {
+// ── Download Notes as Premium PDF (html2canvas + jsPDF) ──
+async function downloadNotes() {
   if (!notesData) return;
-  let text = `# ${notesData.videoTitle || 'Study Notes'}\n`;
-  text += `Topic: ${notesData.topic || ''}\n`;
-  text += `\n## Overview\n${notesData.summary || ''}\n`;
 
-  (notesData.sections || []).forEach((s, i) => {
-    text += `\n## ${i + 1}. ${s.title}\n`;
-    if (s.content) text += `${s.content}\n`;
-    if (s.bulletPoints?.length) {
-      text += '\nKey Points:\n';
-      s.bulletPoints.forEach(bp => text += `  • ${bp}\n`);
+  const btn = $('downloadNotesBtn');
+  const originalHTML = btn.innerHTML;
+  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>Generating…</span>`;
+  btn.disabled = true;
+
+  try {
+    // ── Build staging area to measure heights ──
+    const staging = document.createElement('div');
+    staging.id = '__pdf_staging__';
+    staging.style.cssText = `
+      position: absolute;
+      left: -9999px;
+      top: 0;
+      width: 682px; /* Content width: 794px - 56px*2 */
+      visibility: hidden;
+      box-sizing: border-box;
+      font-family: 'Inter', sans-serif;
+      color: #e8e8f0;
+      background: #0a0a0f;
+    `;
+    document.body.appendChild(staging);
+
+    // Helper: measure heights accurately
+    function measureHeight(html) {
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+      temp.style.cssText = `
+        width: 100%;
+        box-sizing: border-box;
+        display: block;
+      `;
+      staging.appendChild(temp);
+      const h = temp.getBoundingClientRect().height;
+      staging.removeChild(temp);
+      return h;
     }
-    if (s.definitions?.length) {
-      text += '\nDefinitions:\n';
-      s.definitions.forEach(d => text += `  ${d.term}: ${d.definition}\n`);
+
+    const blocks = [];
+
+    // ── Block: Overview ──
+    if (notesData.summary) {
+      blocks.push({
+        type: 'overview',
+        html: `
+          <div style="padding:24px 30px; border-radius:12px; background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(236,72,153,0.04)); border:1px solid rgba(139,92,246,0.2); box-sizing:border-box; width:100%; font-family: 'Inter', sans-serif;">
+            <div style="font-size:10px; font-weight:700; letter-spacing:1.2px; color:#a78bfa; text-transform:uppercase; margin-bottom:10px;">📋 Overview</div>
+            <p style="font-size:13px; color:rgba(232,232,240,0.75); line-height:1.75; margin:0;">${escHtml(notesData.summary)}</p>
+          </div>
+        `
+      });
     }
-  });
 
-  if (notesData.keyTakeaways?.length) {
-    text += '\n## Key Takeaways\n';
-    notesData.keyTakeaways.forEach((t, i) => text += `${i + 1}. ${t}\n`);
+    // ── Blocks: Sections ──
+    (notesData.sections || []).forEach((section, idx) => {
+      const hasBullets = section.bulletPoints && section.bulletPoints.length > 0;
+      const hasDefs = section.definitions && section.definitions.length > 0;
+
+      let inner = `
+        <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:16px; font-family: 'Inter', sans-serif;">
+          <div style="min-width:26px; height:26px; border-radius:8px; background:linear-gradient(135deg,#8b5cf6,#ec4899); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:white; flex-shrink:0; margin-top:2px;">${idx+1}</div>
+          <h2 style="font-size:15px; font-weight:700; color:#e8e8f0; margin:0; line-height:1.4;">
+            ${escHtml(section.title || `Section ${idx+1}`)}
+          </h2>
+        </div>
+      `;
+
+      if (section.content) {
+        inner += `<p style="font-size:12.5px; color:rgba(232,232,240,0.75); line-height:1.75; margin:0 0 16px; padding-left:38px; font-family: 'Inter', sans-serif;">${escHtml(section.content)}</p>`;
+      }
+
+      if (hasBullets) {
+        inner += `<div style="margin:0 0 16px; padding-left:38px; font-family: 'Inter', sans-serif;">
+          <div style="font-size:9px; font-weight:700; letter-spacing:1.2px; color:#a78bfa; text-transform:uppercase; margin-bottom:8px;">Key Points</div>
+          ${section.bulletPoints.map(bp => `
+            <div style="display:flex; gap:8px; margin-bottom:6px; align-items:flex-start;">
+              <div style="width:5px; height:5px; border-radius:50%; background:linear-gradient(135deg,#8b5cf6,#ec4899); flex-shrink:0; margin-top:6px;"></div>
+              <span style="font-size:12px; color:rgba(232,232,240,0.8); line-height:1.6;">${escHtml(bp)}</span>
+            </div>
+          `).join('')}
+        </div>`;
+      }
+
+      if (hasDefs) {
+        inner += `<div style="margin:0 0 4px; padding-left:38px; font-family: 'Inter', sans-serif;">
+          <div style="font-size:9px; font-weight:700; letter-spacing:1.2px; color:#ec4899; text-transform:uppercase; margin-bottom:8px;">Definitions</div>
+          ${section.definitions.map(d => `
+            <div style="margin-bottom:8px; padding:10px 14px; border-radius:8px; background:rgba(139,92,246,0.06); border-left:2.5px solid rgba(139,92,246,0.45); box-sizing:border-box;">
+               <div style="font-size:11.5px; font-weight:700; color:#c4b5fd; margin-bottom:2px;">${escHtml(d.term)}</div>
+               <div style="font-size:11.5px; color:rgba(232,232,240,0.65); line-height:1.5;">${escHtml(d.definition)}</div>
+            </div>
+          `).join('')}
+        </div>`;
+      }
+
+      blocks.push({
+        type: 'section',
+        html: `
+          <div style="padding:24px 30px; border-radius:12px; background:rgba(18, 18, 26, 0.75); border:1px solid rgba(255, 255, 255, 0.06); box-sizing:border-box; width:100%; font-family: 'Inter', sans-serif;">
+            ${inner}
+          </div>
+        `
+      });
+    });
+
+    // ── Block: Key Takeaways ──
+    if (notesData.keyTakeaways && notesData.keyTakeaways.length > 0) {
+      blocks.push({
+        type: 'takeaways',
+        html: `
+          <div style="padding:24px 30px; border-radius:12px; background:linear-gradient(135deg,rgba(245,158,11,0.06),rgba(245,158,11,0.02)); border:1px solid rgba(245,158,11,0.2); box-sizing:border-box; width:100%; font-family: 'Inter', sans-serif;">
+            <div style="font-size:10px; font-weight:700; letter-spacing:1.2px; color:#f59e0b; text-transform:uppercase; margin-bottom:14px; display:flex; align-items:center; gap:6px;">⭐ Key Takeaways</div>
+            ${notesData.keyTakeaways.map((t, i) => `
+              <div style="display:flex; gap:10px; margin-bottom:8px; align-items:flex-start;">
+                <div style="min-width:20px; height:20px; border-radius:5px; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.3); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#f59e0b; flex-shrink:0;">${i+1}</div>
+                <span style="font-size:12.5px; color:rgba(232,232,240,0.85); line-height:1.55; padding-top:1px;">${escHtml(t)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `
+      });
+    }
+
+    // ── Blocks: Glossary ──
+    if (notesData.importantTerms && notesData.importantTerms.length > 0) {
+      blocks.push({
+        type: 'glossary-header',
+        html: `
+          <div style="font-size:10px; font-weight:700; letter-spacing:1.2px; color:#34d399; text-transform:uppercase; margin-top:8px; margin-bottom:2px; width:100%; font-family: 'Inter', sans-serif;">📖 Glossary of Terms</div>
+        `
+      });
+
+      const terms = notesData.importantTerms;
+      for (let i = 0; i < terms.length; i += 2) {
+        const t1 = terms[i];
+        const t2 = terms[i+1];
+
+        let rowHtml = `
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; width:100%; box-sizing:border-box; font-family: 'Inter', sans-serif;">
+            <div style="padding:12px 14px; border-radius:8px; background:rgba(52,211,153,0.04); border:1px solid rgba(52,211,153,0.12); box-sizing:border-box;">
+              <div style="font-size:11px; font-weight:700; color:#6ee7b7; margin-bottom:4px;">${escHtml(t1.term)}</div>
+              <div style="font-size:11px; color:rgba(232,232,240,0.6); line-height:1.5;">${escHtml(t1.definition)}</div>
+            </div>
+        `;
+
+        if (t2) {
+          rowHtml += `
+            <div style="padding:12px 14px; border-radius:8px; background:rgba(52,211,153,0.04); border:1px solid rgba(52,211,153,0.12); box-sizing:border-box;">
+              <div style="font-size:11px; font-weight:700; color:#6ee7b7; margin-bottom:4px;">${escHtml(t2.term)}</div>
+              <div style="font-size:11px; color:rgba(232,232,240,0.6); line-height:1.5;">${escHtml(t2.definition)}</div>
+            </div>
+          `;
+        } else {
+          rowHtml += `<div></div>`;
+        }
+
+        rowHtml += `</div>`;
+
+        blocks.push({
+          type: 'glossary-row',
+          html: rowHtml
+        });
+      }
+    }
+
+    // ── Pagination Grouping Algorithm ──
+    const maxPageHeight = 860; // content height limit inside A4 page template
+    const pages = [];
+    let currentPageBlocks = [];
+    let currentPageHeight = 0;
+
+    blocks.forEach(block => {
+      const blockH = measureHeight(block.html);
+      // Ensure we add at least one block to prevent infinite loop on extra large blocks
+      if (currentPageBlocks.length === 0) {
+        currentPageBlocks.push(block.html);
+        currentPageHeight = blockH;
+      } else {
+        // If block fits within page limit (including 16px gap)
+        if (currentPageHeight + 16 + blockH <= maxPageHeight) {
+          currentPageBlocks.push(block.html);
+          currentPageHeight += 16 + blockH;
+        } else {
+          // Push current page and start a new page
+          pages.push(currentPageBlocks);
+          currentPageBlocks = [block.html];
+          currentPageHeight = blockH;
+        }
+      }
+    });
+
+    if (currentPageBlocks.length > 0) {
+      pages.push(currentPageBlocks);
+    }
+
+    // Clean up staging area
+    document.body.removeChild(staging);
+
+    // ── Compile final PDF pages DOM wrapper ──
+    const pdfPagesWrapper = document.createElement('div');
+    pdfPagesWrapper.id = '__pdf_pages_wrapper__';
+    pdfPagesWrapper.style.cssText = `
+      position: fixed;
+      left: -9999px;
+      top: 0;
+      width: 794px;
+      background: #0a0a0f;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    `;
+
+    // Page 1: Cover Page
+    const coverPage = document.createElement('div');
+    coverPage.className = 'pdf-page-render';
+    coverPage.style.cssText = `
+      width: 794px;
+      height: 1123px;
+      box-sizing: border-box;
+      padding: 80px 56px 60px;
+      background: linear-gradient(135deg, #0d0d1a 0%, #12091f 50%, #0a1020 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+    `;
+    coverPage.innerHTML = `
+      <div style="position:absolute;top:-80px;right:-80px;width:320px;height:320px;
+        border-radius:50%;background:radial-gradient(circle,rgba(139,92,246,0.18) 0%,transparent 70%);pointer-events:none"></div>
+      <div style="position:absolute;bottom:-60px;left:-60px;width:260px;height:260px;
+        border-radius:50%;background:radial-gradient(circle,rgba(236,72,153,0.12) 0%,transparent 70%);pointer-events:none"></div>
+
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;background:linear-gradient(135deg,#8b5cf6,#ec4899);
+          border-radius:10px;display:flex;align-items:center;justify-content:center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+        </div>
+        <span style="font-size:15px;font-weight:700;color:#a78bfa;letter-spacing:0.5px">QuizTube<span style="color:#ec4899">AI</span></span>
+      </div>
+
+      <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; margin-top: -40px;">
+        <div style="display:inline-block; align-self: flex-start; padding:5px 14px; border-radius:20px;
+          background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.35);
+          font-size:11px;font-weight:600;color:#a78bfa;letter-spacing:1px;
+          text-transform:uppercase;margin-bottom:24px">Study Notes</div>
+
+        <h1 style="font-size:32px;font-weight:800;line-height:1.25;margin:0 0 16px;
+          background:linear-gradient(90deg,#ffffff,#c4b5fd);
+          -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+          background-clip:text; font-family: 'Inter', sans-serif;">${escHtml(notesData.videoTitle || 'Study Notes')}</h1>
+
+        <p style="font-size:14px;color:#a78bfa;margin:0 0 32px;font-weight:500; font-family: 'Inter', sans-serif;">
+          ${escHtml(notesData.topic || '')}
+        </p>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          ${(notesData.topicsCovered || []).map(t =>
+            `<span style="display:inline-block;padding:4px 12px;
+              border-radius:20px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.25);
+              font-size:11px;color:#c4b5fd;font-weight:500; font-family: 'Inter', sans-serif;">${escHtml(t)}</span>`
+          ).join('')}
+        </div>
+      </div>
+
+      <div style="padding-top:24px;border-top:1px solid rgba(255,255,255,0.07);
+        display:flex;justify-content:space-between;align-items:center; font-family: 'Inter', sans-serif;">
+        <span style="font-size:11px;color:rgba(255,255,255,0.3)">Generated by QuizTubeAI</span>
+        <span style="font-size:11px;color:rgba(255,255,255,0.3)">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</span>
+      </div>
+    `;
+    pdfPagesWrapper.appendChild(coverPage);
+
+    // Build Content Pages
+    const totalPagesCount = pages.length + 1; // Content pages + Cover page
+
+    pages.forEach((pageBlocks, pIdx) => {
+      const pageNum = pIdx + 2;
+      const contentPage = document.createElement('div');
+      contentPage.className = 'pdf-page-render';
+      contentPage.style.cssText = `
+        width: 794px;
+        height: 1123px;
+        box-sizing: border-box;
+        padding: 48px 56px;
+        background: #0a0a0f;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        position: relative;
+      `;
+
+      const headerHtml = `
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:12px; margin-bottom:20px; font-family: 'Inter', sans-serif;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="width:24px; height:24px; background:linear-gradient(135deg,#8b5cf6,#ec4899); border-radius:6px; display:flex; align-items:center; justify-content:center;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            </div>
+            <span style="font-size:12px; font-weight:700; color:#a78bfa; letter-spacing:0.5px;">QuizTube<span style="color:#ec4899">AI</span></span>
+          </div>
+          <span style="font-size:11px; color:rgba(255,255,255,0.45); font-weight:500; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            ${escHtml(notesData.videoTitle || 'Study Notes')}
+          </span>
+        </div>
+      `;
+
+      const footerHtml = `
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid rgba(255,255,255,0.05); padding-top:12px; margin-top:20px; font-size:10px; color:rgba(255,255,255,0.3); font-family: 'Inter', sans-serif;">
+          <span>QuizTubeAI — AI Study Notes</span>
+          <span>Page ${pageNum} of ${totalPagesCount}</span>
+        </div>
+      `;
+
+      contentPage.innerHTML = `
+        ${headerHtml}
+        <div style="flex:1; display:flex; flex-direction:column; gap:16px; font-family: 'Inter', sans-serif;">
+          ${pageBlocks.join('')}
+        </div>
+        ${footerHtml}
+      `;
+
+      pdfPagesWrapper.appendChild(contentPage);
+    });
+
+    document.body.appendChild(pdfPagesWrapper);
+
+    // ── Render each page individually with html2canvas ──
+    const renderedPages = pdfPagesWrapper.querySelectorAll('.pdf-page-render');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+
+    for (let i = 0; i < renderedPages.length; i++) {
+      const pageEl = renderedPages[i];
+      const pageCanvas = await html2canvas(pageEl, {
+        scale: 2, // High resolution crisp text rendering
+        useCORS: true,
+        backgroundColor: '#0a0a0f',
+        logging: false,
+        width: 794,
+        height: 1123,
+        windowWidth: 794,
+        windowHeight: 1123
+      });
+
+      const pageImg = pageCanvas.toDataURL('image/jpeg', 0.95);
+
+      if (i > 0) {
+        doc.addPage();
+      }
+
+      // Add as full A4 page: width=210mm, height=297mm
+      doc.addImage(pageImg, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+    }
+
+    // Clean up
+    document.body.removeChild(pdfPagesWrapper);
+
+    const safeName = (notesData.videoTitle || 'notes').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    doc.save(`${safeName}_notes.pdf`);
+
+  } catch (err) {
+    console.error('PDF generation failed:', err);
+    alert('PDF generation failed. Please try again.');
+  } finally {
+    btn.innerHTML = originalHTML;
+    btn.disabled = false;
   }
-
-  if (notesData.importantTerms?.length) {
-    text += '\n## Glossary\n';
-    notesData.importantTerms.forEach(t => text += `${t.term}: ${t.definition}\n`);
-  }
-
-  const blob = new Blob([text], { type: 'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${(notesData.videoTitle || 'notes').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`;
-  a.click();
 }
 
 // ── Patch resetAll to also clear notes ──
