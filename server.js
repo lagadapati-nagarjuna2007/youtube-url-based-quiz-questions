@@ -2,15 +2,11 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
-const { execSync, exec } = require('child_process');
-const { promisify } = require('util');
-const execAsync = promisify(exec);
 const FormData = require('form-data');
-const os = require('os');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 
 app.use(cors());
 app.use(express.json());
@@ -72,103 +68,71 @@ function splitTranscript(text, chunkSize = CHUNK_SIZE, maxChunks = MAX_CHUNKS) {
   return chunks;
 }
 
-// ── Check if yt-dlp is installed ──
-function checkYtDlp() {
-  try {
-    execSync('yt-dlp --version', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// ── Check if ffmpeg is installed ──
-function checkFfmpeg() {
-  try {
-    execSync('ffmpeg -version', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// ── Download audio from YouTube using yt-dlp ──
-async function downloadAudio(videoId) {
-  const tmpDir = os.tmpdir();
-  const outputPath = path.join(tmpDir, `yt_audio_${videoId}`);
-
-  // Download as best audio, convert to mp3 via ffmpeg
-  const cmd = `yt-dlp -f bestaudio --extract-audio --audio-format mp3 --audio-quality 32K -o "${outputPath}.%(ext)s" "https://www.youtube.com/watch?v=${videoId}" --no-playlist`;
-
-  console.log(`⬇️  Downloading audio for ${videoId}...`);
-  await execAsync(cmd, { timeout: 120000 }); // 2 min timeout
-
-  const finalPath = `${outputPath}.mp3`;
-  if (!fs.existsSync(finalPath)) {
-    throw new Error('Audio download failed — file not found after yt-dlp.');
-  }
-
-  const stats = fs.statSync(finalPath);
-  console.log(`✅ Audio downloaded: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
-  return finalPath;
-}
-
-// ── Split audio file into chunks under 24MB using ffmpeg ──
-async function splitAudioIfNeeded(audioPath) {
-  const stats = fs.statSync(audioPath);
-  const fileSizeMB = stats.size / 1024 / 1024;
-  const WHISPER_LIMIT_MB = 24;
-
-  if (fileSizeMB <= WHISPER_LIMIT_MB) {
-    console.log(`✅ Audio size ${fileSizeMB.toFixed(2)}MB — no splitting needed`);
-    return [audioPath];
-  }
-
-  console.log(`✂️  Audio is ${fileSizeMB.toFixed(2)}MB — splitting into chunks...`);
-
-  // Get duration in seconds
-  const { stdout } = await execAsync(
-    `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${audioPath}"`
-  );
-  const totalDuration = parseFloat(stdout.trim());
-
-  // Calculate segment length so each chunk stays under 24MB
-  // 32kbps mp3 = ~0.24MB/min → 24MB ≈ 100 minutes, but we use 20-min segments to be safe
-  const SEGMENT_SECONDS = 1200; // 20 minutes per chunk
-  const numSegments = Math.ceil(totalDuration / SEGMENT_SECONDS);
-
-  const tmpDir = os.tmpdir();
-  const baseName = path.basename(audioPath, '.mp3');
-  const chunkPaths = [];
-
-  for (let i = 0; i < numSegments; i++) {
-    const startSec = i * SEGMENT_SECONDS;
-    const chunkPath = path.join(tmpDir, `${baseName}_chunk_${i}.mp3`);
-    await execAsync(
-      `ffmpeg -y -i "${audioPath}" -ss ${startSec} -t ${SEGMENT_SECONDS} -acodec copy "${chunkPath}"`
-    );
-    if (fs.existsSync(chunkPath)) {
-      chunkPaths.push(chunkPath);
-      console.log(`  → Chunk ${i + 1}/${numSegments}: ${(fs.statSync(chunkPath).size / 1024 / 1024).toFixed(2)}MB`);
+// ── Get audio stream URL from YTStream RapidAPI ──
+async function getAudioStreamUrl(videoId) {
+  const response = await fetch(
+    `https://ytstream-download-youtube-videos.p.rapidapi.com/dl?id=${videoId}`,
+    {
+      method: 'GET',
+      headers: {
+        'x-rapidapi-host': 'ytstream-download-youtube-videos.p.rapidapi.com',
+        'x-rapidapi-key': RAPIDAPI_KEY
+      }
     }
+  );
+
+  if (!response.ok) {
+    throw new Error(`YTStream API error: ${response.status}`);
   }
 
-  return chunkPaths;
+  const data = await response.json();
+
+  // YTStream returns adaptiveFormats and formats — pick audio only (lowest size)
+  const formats = data.adaptiveFormats || [];
+  const audioFormats = formats.filter(f => f.mimeType && f.mimeType.includes('audio'));
+
+  if (!audioFormats.length) {
+    throw new Error('No audio formats found in YTStream response');
+  }
+
+  // Pick lowest bitrate audio to keep size small for Whisper
+  audioFormats.sort((a, b) => parseInt(a.bitrate) - parseInt(b.bitrate));
+  const audioUrl = audioFormats[0].url;
+
+  console.log(`✅ Audio stream URL obtained (bitrate: ${audioFormats[0].bitrate})`);
+  return audioUrl;
 }
 
-// ── Transcribe a single audio file using Groq Whisper ──
-async function whisperTranscribe(audioFilePath) {
-  const fileStream = fs.createReadStream(audioFilePath);
+// ── Transcribe audio URL directly via Groq Whisper ──
+async function transcribeWithWhisper(audioUrl) {
+  console.log(`⬇️  Fetching audio stream...`);
+
+  // Fetch audio as buffer
+  const audioResponse = await fetch(audioUrl);
+  if (!audioResponse.ok) {
+    throw new Error(`Failed to fetch audio stream: ${audioResponse.status}`);
+  }
+
+  const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
+  console.log(`✅ Audio fetched: ${(audioBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+
+  // Check size — Groq Whisper limit is 25MB
+  if (audioBuffer.length > 24 * 1024 * 1024) {
+    throw new Error('Audio file too large for Whisper (>24MB). Video may be too long.');
+  }
+
+  // Send to Groq Whisper
   const formData = new FormData();
-  formData.append('file', fileStream, {
-    filename: path.basename(audioFilePath),
-    contentType: 'audio/mpeg'
+  formData.append('file', audioBuffer, {
+    filename: 'audio.webm',
+    contentType: 'audio/webm'
   });
   formData.append('model', 'whisper-large-v3');
   formData.append('response_format', 'text');
   formData.append('language', 'en');
 
-  const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+  console.log(`🎙️  Transcribing via Groq Whisper...`);
+  const whisperResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${GROQ_API_KEY}`,
@@ -177,58 +141,21 @@ async function whisperTranscribe(audioFilePath) {
     body: formData
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(`Whisper API error ${response.status}: ${err.error?.message || response.statusText}`);
+  if (!whisperResponse.ok) {
+    const err = await whisperResponse.json().catch(() => ({}));
+    throw new Error(`Whisper API error ${whisperResponse.status}: ${err.error?.message || whisperResponse.statusText}`);
   }
 
-  // response_format: 'text' returns plain text directly
-  const transcript = await response.text();
+  const transcript = await whisperResponse.text();
+  console.log(`✅ Whisper transcript: ${transcript.length} chars`);
   return transcript.trim();
 }
 
-// ── Full audio → transcript pipeline ──
-async function transcribeFromAudio(videoId) {
-  let audioPath = null;
-  let chunkPaths = [];
-
-  try {
-    if (!checkYtDlp()) throw new Error('yt-dlp is not installed on this server.');
-    if (!checkFfmpeg()) throw new Error('ffmpeg is not installed on this server.');
-
-    audioPath = await downloadAudio(videoId);
-    chunkPaths = await splitAudioIfNeeded(audioPath);
-
-    const transcriptParts = [];
-    for (let i = 0; i < chunkPaths.length; i++) {
-      console.log(`🎙️  Transcribing audio chunk ${i + 1}/${chunkPaths.length} via Whisper...`);
-      const part = await whisperTranscribe(chunkPaths[i]);
-      transcriptParts.push(part);
-      console.log(`  → Chunk ${i + 1} transcribed: ${part.length} chars`);
-    }
-
-    const fullTranscript = transcriptParts.join(' ');
-    console.log(`✅ Full Whisper transcript: ${fullTranscript.length} chars`);
-    return fullTranscript;
-
-  } finally {
-    // Cleanup temp files
-    try {
-      if (audioPath && fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
-      chunkPaths.forEach(p => {
-        if (p !== audioPath && fs.existsSync(p)) fs.unlinkSync(p);
-      });
-    } catch (e) {
-      console.warn('⚠️ Temp file cleanup warning:', e.message);
-    }
-  }
-}
-
-// ── Fetch transcript from YouTube (with Whisper fallback) ──
+// ── Fetch transcript from YouTube (Whisper fallback via YTStream) ──
 async function getTranscript(videoId) {
-  // Try youtube-transcript package first
+  // Try youtube-transcript first (subtitles)
   try {
-    const { YoutubeTranscript } = await import('youtube-transcript');
+    const { YoutubeTranscript } = require('youtube-transcript');
     const transcriptArr = await YoutubeTranscript.fetchTranscript(videoId);
     if (!transcriptArr || transcriptArr.length === 0) throw new Error('Empty transcript');
     const fullText = transcriptArr.map(c => c.text).join(' ');
@@ -236,8 +163,11 @@ async function getTranscript(videoId) {
     return fullText;
   } catch (subtitleErr) {
     console.warn(`⚠️ Subtitles unavailable: ${subtitleErr.message}`);
-    console.log(`🔄 Falling back to Whisper audio transcription...`);
-    return await transcribeFromAudio(videoId);
+    console.log(`🔄 Falling back to Whisper via YTStream...`);
+
+    // Fallback: YTStream → Whisper
+    const audioUrl = await getAudioStreamUrl(videoId);
+    return await transcribeWithWhisper(audioUrl);
   }
 }
 
