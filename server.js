@@ -127,9 +127,9 @@ async function transcribeWithWhisper(audioUrl) {
   // Send to Groq Whisper
   const formData = new FormData();
   formData.append('file', audioBuffer, {
-    filename: 'audio.webm',
-    contentType: 'audio/webm'
-  });
+  filename: 'audio.mp4',
+  contentType: 'audio/mp4'
+});
   formData.append('model', 'whisper-large-v3');
   formData.append('response_format', 'text');
   formData.append('language', 'en');
