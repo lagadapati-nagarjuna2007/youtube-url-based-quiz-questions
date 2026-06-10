@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "routes": [
+    { "src": "/api/generate-quiz", "dest": "/api/generate-quiz.js" },
+    { "src": "/api/generate-notes", "dest": "/api/generate-notes.js" },
+    { "src": "/(.*)", "dest": "/public/$1" }
+  ]
+}
