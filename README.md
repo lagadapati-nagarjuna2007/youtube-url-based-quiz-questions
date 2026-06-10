@@ -2,10 +2,11 @@
 
 ## 🚀 Live Demo
 
-https://youtube-url-based-quiz-questions.onrender.com/
+https://youtube-url-based-quiz-questions.vercel.app/
 
 ---
-## 📌 Problem Statement 
+
+## 📌 Problem Statement
 
 An AI-powered learning tool that analyzes YouTube video transcripts to automatically generate **interactive quiz questions** or **structured study notes**. Just paste a YouTube URL, pick your mode, and let the AI do the rest!
 
@@ -44,10 +45,11 @@ An AI-powered learning tool that analyzes YouTube video transcripts to automatic
 | Layer | Technology |
 |-------|------------|
 | Frontend | HTML, CSS, Vanilla JavaScript |
-| Backend | Node.js, Express.js |
+| Backend | Vercel Serverless Functions (Node.js) |
 | AI | Groq API (Llama 3.3 70B / GPT-OSS 120B / Gemma2 9B) |
 | Transcript | YouTube Transcripts RapidAPI |
-| Env Config | `dotenv` |
+| Deployment | Vercel (free tier, no cold starts) |
+| Env Config | `dotenv` / Vercel Environment Variables |
 
 ---
 
@@ -56,13 +58,17 @@ An AI-powered learning tool that analyzes YouTube video transcripts to automatic
 ```
 youtube-quiz-notes-generator/
 ├── public/
-│   ├── index.html       # Main UI (quiz + notes mode toggle)
-│   ├── styles.css       # All styling (dark theme, animations)
-│   └── script.js        # Frontend logic (quiz, notes, score, confetti)
-├── server.js            # Express backend (transcript fetch + Groq API)
-├── package.json         # Project dependencies
-├── .env                 # API keys (not pushed to GitHub)
-└── .gitignore           # Ignores node_modules and .env
+│   ├── index.html        # Main UI (quiz + notes mode toggle)
+│   ├── styles.css        # All styling (dark theme, animations)
+│   └── script.js         # Frontend logic (quiz, notes, score, confetti)
+├── api/
+│   ├── _helpers.js       # Shared utilities (transcript fetch, Groq call)
+│   ├── generate-quiz.js  # Serverless function — POST /api/generate-quiz
+│   └── generate-notes.js # Serverless function — POST /api/generate-notes
+├── vercel.json           # Vercel routing config
+├── package.json          # Project dependencies
+├── .env                  # API keys (not pushed to GitHub)
+└── .gitignore            # Ignores node_modules and .env
 ```
 
 ---
@@ -73,7 +79,7 @@ youtube-quiz-notes-generator/
 ```
 User pastes YouTube URL → selects difficulty & question count
         ↓
-Backend extracts Video ID
+Vercel Serverless Function extracts Video ID
         ↓
 Fetches transcript via RapidAPI
         ↓
@@ -92,7 +98,7 @@ User answers → sees score + explanations + confetti
 ```
 User pastes YouTube URL → selects AI model
         ↓
-Backend extracts Video ID
+Vercel Serverless Function extracts Video ID
         ↓
 Fetches transcript via RapidAPI
         ↓
@@ -129,16 +135,16 @@ npm install
 ```env
 GROQ_API_KEY=your_groq_api_key_here
 RAPIDAPI_KEY=your_rapidapi_key_here
-PORT=3000
 ```
 
 > - Get your free Groq API key at [console.groq.com](https://console.groq.com)
 > - Get your RapidAPI key at [rapidapi.com](https://rapidapi.com) — subscribe to the **YouTube Transcripts** API
 
-### 4. Run the app
+### 4. Run locally with Vercel CLI
 
 ```bash
-npm start
+npm install -g vercel
+vercel dev
 ```
 
 ### 5. Open in browser
@@ -146,6 +152,30 @@ npm start
 ```
 http://localhost:3000
 ```
+
+---
+
+## ☁️ Deploy on Vercel
+
+### 1. Push to GitHub
+
+```bash
+git add .
+git commit -m "deploy to vercel"
+git push
+```
+
+### 2. Import on Vercel
+
+1. Go to [vercel.com](https://vercel.com) → **Add New Project**
+2. Import your GitHub repo
+3. Framework Preset → **Other**
+4. Add Environment Variables:
+   ```
+   GROQ_API_KEY = your_groq_api_key_here
+   RAPIDAPI_KEY = your_rapidapi_key_here
+   ```
+5. Click **Deploy** ✅
 
 ---
 
