@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 # Install system dependencies (Python3 for yt-dlp, ffmpeg for processing)
 RUN apt-get update && apt-get install -y \
