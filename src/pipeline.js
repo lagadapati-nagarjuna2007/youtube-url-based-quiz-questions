@@ -10,20 +10,80 @@ const { analyzeFrames } = require('./nvidia');
 const { formatSeconds, ensureDirectoryExists, cleanupPath } = require('./utils');
 
 /**
+ * Safely writes cookies content (if configured) to a temp file and returns its path
+ * @param {string} tempDir 
+ * @returns {string|null}
+ */
+function getCookiesFilePath(tempDir) {
+  const cookiesBase64 = process.env.YOUTUBE_COOKIES_BASE64;
+  const cookiesText = process.env.YOUTUBE_COOKIES;
+  
+  if (cookiesBase64) {
+    try {
+      const cookiesContent = Buffer.from(cookiesBase64, 'base64').toString('utf-8');
+      const cookiesPath = path.join(tempDir, 'cookies.txt');
+      fs.writeFileSync(cookiesPath, cookiesContent, 'utf-8');
+      console.log(`Successfully wrote cookies from YOUTUBE_COOKIES_BASE64 to ${cookiesPath}`);
+      return cookiesPath;
+    } catch (err) {
+      console.error('Failed to decode YOUTUBE_COOKIES_BASE64:', err.message);
+    }
+  }
+  
+  if (cookiesText) {
+    try {
+      const cookiesPath = path.join(tempDir, 'cookies.txt');
+      fs.writeFileSync(cookiesPath, cookiesText, 'utf-8');
+      console.log(`Successfully wrote cookies from YOUTUBE_COOKIES to ${cookiesPath}`);
+      return cookiesPath;
+    } catch (err) {
+      console.error('Failed to write YOUTUBE_COOKIES:', err.message);
+    }
+  }
+  
+  return null;
+}
+
+/**
  * Gets video metadata using yt-dlp without downloading
  * @param {string} youtubeUrl 
+ * @param {string} tempDir
  * @returns {Promise<object>} - { title, duration, thumbnail }
  */
-function getVideoMetadata(youtubeUrl) {
+function getVideoMetadata(youtubeUrl, tempDir) {
   return new Promise((resolve, reject) => {
-    // Run yt-dlp to extract duration and metadata
-    const cmd = `yt-dlp --skip-download --dump-json "${youtubeUrl}"`;
-    exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
-      if (error) {
-        return reject(new Error(`Metadata extraction failed: ${stderr || error.message}`));
+    const cookiesPath = getCookiesFilePath(tempDir);
+    const args = [
+      '--skip-download',
+      '--dump-json',
+      '--js-runtimes', 'node',
+      youtubeUrl
+    ];
+    
+    if (cookiesPath) {
+      args.unshift('--cookies', cookiesPath);
+    }
+    
+    console.log(`Running metadata extraction: yt-dlp ${args.join(' ')}`);
+    const proc = spawn('yt-dlp', args);
+    
+    let stdoutData = '';
+    let stderrData = '';
+    
+    proc.stdout.on('data', (data) => {
+      stdoutData += data.toString();
+    });
+    
+    proc.stderr.on('data', (data) => {
+      stderrData += data.toString();
+    });
+    
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        return reject(new Error(`Metadata extraction failed: ${stderrData || `exit code ${code}`}`));
       }
       try {
-        const metadata = JSON.parse(stdout);
+        const metadata = JSON.parse(stdoutData);
         resolve({
           title: metadata.title || 'YouTube Video',
           duration: parseInt(metadata.duration) || 0,
@@ -33,6 +93,10 @@ function getVideoMetadata(youtubeUrl) {
         reject(new Error(`Failed to parse metadata JSON: ${err.message}`));
       }
     });
+    
+    proc.on('error', (err) => {
+      reject(new Error(`Failed to spawn yt-dlp: ${err.message}`));
+    });
   });
 }
 
@@ -40,17 +104,24 @@ function getVideoMetadata(youtubeUrl) {
  * Downloads YouTube video using yt-dlp at 480p maximum
  * @param {string} youtubeUrl 
  * @param {string} outputPath 
+ * @param {string} tempDir
  * @returns {Promise<void>}
  */
-function downloadVideo(youtubeUrl, outputPath) {
+function downloadVideo(youtubeUrl, outputPath, tempDir) {
   return new Promise((resolve, reject) => {
+    const cookiesPath = getCookiesFilePath(tempDir);
     const args = [
       '-f', config.DOWNLOAD_QUALITY,
       '-o', outputPath,
+      '--js-runtimes', 'node',
       youtubeUrl
     ];
     
-    console.log(`Running: yt-dlp ${args.join(' ')}`);
+    if (cookiesPath) {
+      args.unshift('--cookies', cookiesPath);
+    }
+    
+    console.log(`Running download: yt-dlp ${args.join(' ')}`);
     const proc = spawn('yt-dlp', args);
     
     let stderrData = '';
@@ -218,7 +289,7 @@ async function runPipeline(jobId, youtubeUrl, jobType) {
     console.log(`[Job ${jobId}] Fetching metadata...`);
     await updateJob(jobId, { progress: 3, current_step: 'Fetching video metadata' });
     
-    const metadata = await getVideoMetadata(youtubeUrl);
+    const metadata = await getVideoMetadata(youtubeUrl, tempDir);
     console.log(`[Job ${jobId}] Metadata fetched: "${metadata.title}" (${formatDuration(metadata.duration)})`);
 
     if (metadata.duration > config.MAX_VIDEO_DURATION_SECONDS) {
@@ -230,7 +301,7 @@ async function runPipeline(jobId, youtubeUrl, jobType) {
     // ========================================================
     console.log(`[Job ${jobId}] Downloading video...`);
     await updateJob(jobId, { progress: 10, current_step: 'Downloading video' });
-    await downloadVideo(youtubeUrl, videoPath);
+    await downloadVideo(youtubeUrl, videoPath, tempDir);
 
     // ========================================================
     // STAGE 3: EXTRACT AUDIO
@@ -419,9 +490,15 @@ CRITICAL: Respond with ONLY a raw JSON object. Do not wrap in markdown \`\`\`jso
 
   } catch (err) {
     console.error(`[Job ${jobId}] Failed:`, err.message);
+    
+    let errorMessage = err.message;
+    if (errorMessage.toLowerCase().includes("not a bot") || errorMessage.toLowerCase().includes("sign in to confirm")) {
+      errorMessage = `YouTube blocked this request with bot detection ("Sign in to confirm you're not a bot"). To fix this on Render, please export your YouTube cookies to Netscape format, base64 encode the file content, and set it as the 'YOUTUBE_COOKIES_BASE64' environment variable in your Render dashboard, then restart/redeploy the service.`;
+    }
+    
     await updateJob(jobId, {
       status: 'failed',
-      error: err.message,
+      error: errorMessage,
       current_step: 'Failed'
     });
   } finally {
