@@ -662,3 +662,114 @@ body {
 }
 /* PDF export spinner */
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ── Code Block & Monospace styling ── */
+.code-block {
+  margin: 14px 0;
+  font-family: 'Consolas', 'Fira Code', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  color: #a78bfa;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
+}
+
+.inline-code {
+  font-family: 'Consolas', 'Fira Code', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #c4b5fd;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* ── Visual Timeline ── */
+.timeline-card .note-card__body {
+  max-height: 2000px !important;
+  padding: 18px 20px !important;
+}
+
+.timeline-list {
+  border-left: 2px solid rgba(139, 92, 246, 0.25);
+  margin-left: 8px;
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.timeline-item {
+  position: relative;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-card);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.timeline-item__badge {
+  font-family: monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.15);
+  padding: 3px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.timeline-item__content {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding-top: 1px;
+}
+
+/* ── Interview Card ── */
+.interview-card .note-card__icon {
+  background: linear-gradient(135deg, #ec4899, #db2777);
+}
+
+.interview-item {
+  border-bottom: 1px solid var(--border-dim);
+  padding-bottom: 14px;
+  margin-bottom: 4px;
+}
+
+.interview-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.interview-item__q {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f472b6;
+  margin-bottom: 6px;
+}
+
+.interview-item__a {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  padding-left: 14px;
+  border-left: 2px solid rgba(236, 72, 153, 0.45);
+}

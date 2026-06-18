@@ -133,7 +133,7 @@ async function handleGenerate() {
     const response = await fetch('/api/generate-quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, qCount: parseInt(qCount), difficulty, model })
+      body: JSON.stringify({ url, qCount: parseInt(qCount), difficulty })
     });
 
     const data = await response.json();
@@ -142,20 +142,25 @@ async function handleGenerate() {
       throw new Error(data.error || 'Failed to generate quiz');
     }
 
-    if (!data.quiz || !data.quiz.questions || data.quiz.questions.length === 0) {
-      throw new Error('No questions were generated. Try a different video.');
+    // Cache hit: Quiz is ready immediately
+    if (data.cached) {
+      if (!data.quiz || !data.quiz.questions || data.quiz.questions.length === 0) {
+        throw new Error('No cached questions were found.');
+      }
+      quizData = data.quiz;
+      questions = data.quiz.questions;
+      hideLoading();
+      renderQuiz(data.videoId);
+      $('generateBtn').disabled = false;
+    } else {
+      // Cache miss: Start polling background job
+      pollJob(data.jobId, 'quiz', data.videoId);
     }
-
-    quizData = data.quiz;
-    questions = data.quiz.questions;
-    hideLoading();
-    renderQuiz(data.videoId);
 
   } catch (e) {
     hideLoading();
     $('heroSection').style.display = 'block';
     showError(e.message || 'Something went wrong. Please try again.');
-  } finally {
     $('generateBtn').disabled = false;
   }
 }
@@ -534,23 +539,30 @@ async function handleGenerateNotes() {
     const response = await fetch('/api/generate-notes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, model })
+      body: JSON.stringify({ url })
     });
 
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to generate notes');
-    if (!data.notes || !data.notes.sections || data.notes.sections.length === 0)
-      throw new Error('No notes were generated. Try a different video.');
 
-    notesData = data.notes;
-    hideLoading();
-    renderNotes(data.videoId);
+    // Cache hit: Notes are ready immediately
+    if (data.cached) {
+      if (!data.notes || !data.notes.sections || data.notes.sections.length === 0) {
+        throw new Error('No cached notes were found.');
+      }
+      notesData = data.notes;
+      hideLoading();
+      renderNotes(data.videoId);
+      $('generateBtn').disabled = false;
+    } else {
+      // Cache miss: Start polling background job
+      pollJob(data.jobId, 'notes', data.videoId);
+    }
 
   } catch (e) {
     hideLoading();
     $('heroSection').style.display = 'block';
     showError(e.message || 'Something went wrong. Please try again.');
-  } finally {
     $('generateBtn').disabled = false;
   }
 }
@@ -579,11 +591,37 @@ function renderNotes(videoId) {
   const container = $('notesContainer');
   container.innerHTML = '';
 
+  // Prepend Visual Timeline card if present
+  if (notesData.timeline && notesData.timeline.length > 0) {
+    const timelineCard = document.createElement('div');
+    timelineCard.className = 'note-card expanded timeline-card';
+    timelineCard.style.animationDelay = '0s';
+    timelineCard.innerHTML = `
+      <div class="note-card__header">
+        <div class="note-card__header-left">
+          <div class="note-card__icon">⏱️</div>
+          <span class="note-card__title">Visual Timeline</span>
+        </div>
+      </div>
+      <div class="note-card__body">
+        <div class="timeline-list" style="display:flex; flex-direction:column; gap:12px; padding:10px 0 10px 10px; border-left:2px solid rgba(139,92,246,0.3); margin-left:10px;">
+          ${notesData.timeline.map(item => `
+            <div class="timeline-item" style="display:flex; gap:16px; align-items:flex-start; position:relative;">
+              <div class="timeline-item__badge" style="font-family:monospace; font-size:11.5px; font-weight:700; color:#c4b5fd; background:rgba(139,92,246,0.15); padding:2px 8px; border-radius:4px; flex-shrink:0;">${escHtml(item.timestamp)}</div>
+              <div class="timeline-item__content" style="font-size:13px; color:rgba(232,232,240,0.85); line-height:1.5; padding-top:2px;">${escHtml(item.topic)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+    container.appendChild(timelineCard);
+  }
+
   (notesData.sections || []).forEach((section, i) => {
     const card = document.createElement('div');
-    card.className = 'note-card' + (i === 0 ? ' expanded' : '');
+    card.className = 'note-card' + (i === 0 && (!notesData.timeline || notesData.timeline.length === 0) ? ' expanded' : '');
     card.id = `notecard-${i}`;
-    card.style.animationDelay = `${i * 0.07}s`;
+    card.style.animationDelay = `${(i + 1) * 0.07}s`;
 
     const hasBullets = section.bulletPoints && section.bulletPoints.length > 0;
     const hasDefs = section.definitions && section.definitions.length > 0;
@@ -599,11 +637,11 @@ function renderNotes(videoId) {
         </span>
       </div>
       <div class="note-card__body">
-        ${section.content ? `<p class="note-card__content">${escHtml(section.content)}</p>` : ''}
+        ${section.content ? `<p class="note-card__content">${parseMarkdown(section.content)}</p>` : ''}
         ${hasBullets ? `
           <div class="note-section-label">Key Points</div>
           <ul class="note-bullets">
-            ${section.bulletPoints.map(bp => `<li>${escHtml(bp)}</li>`).join('')}
+            ${section.bulletPoints.map(bp => `<li>${parseMarkdown(bp)}</li>`).join('')}
           </ul>
         ` : ''}
         ${hasDefs ? `
@@ -621,6 +659,37 @@ function renderNotes(videoId) {
     `;
     container.appendChild(card);
   });
+
+  // Append Interview Preparation Q&A card if present
+  if (notesData.interviewQuestions && notesData.interviewQuestions.length > 0) {
+    const interviewCard = document.createElement('div');
+    interviewCard.className = 'note-card interview-card';
+    interviewCard.id = 'notecard-interview';
+    interviewCard.style.animationDelay = `${((notesData.sections || []).length + 1) * 0.07}s`;
+    
+    interviewCard.innerHTML = `
+      <div class="note-card__header" onclick="toggleNoteCard('interview')">
+        <div class="note-card__header-left">
+          <div class="note-card__icon">💬</div>
+          <span class="note-card__title">Interview Preparation Q&A</span>
+        </div>
+        <span class="note-card__chevron">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+      </div>
+      <div class="note-card__body">
+        <div class="interview-list" style="display:flex; flex-direction:column; gap:16px; padding:10px 0;">
+          ${notesData.interviewQuestions.map((iq, idx) => `
+            <div class="interview-item" style="border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:12px; margin-bottom:4px;">
+              <div class="interview-item__q" style="font-size:13.5px; font-weight:700; color:#f472b6; margin-bottom:6px;"><strong>Q${idx + 1}:</strong> ${escHtml(iq.question)}</div>
+              <div class="interview-item__a" style="font-size:13px; color:rgba(232,232,240,0.75); line-height:1.6; padding-left:14px; border-left:2px solid rgba(236,72,153,0.4); font-family: 'Inter', sans-serif;"><strong>Answer:</strong> ${escHtml(iq.answer)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+    container.appendChild(interviewCard);
+  }
 
   // Key Takeaways
   if (notesData.keyTakeaways && notesData.keyTakeaways.length > 0) {
@@ -727,6 +796,26 @@ async function downloadNotes() {
       });
     }
 
+    // ── Block: Timeline ──
+    if (notesData.timeline && notesData.timeline.length > 0) {
+      blocks.push({
+        type: 'timeline',
+        html: `
+          <div style="padding:24px 30px; border-radius:12px; background:rgba(18,18,26,0.75); border:1px solid rgba(255,255,255,0.06); box-sizing:border-box; width:100%; font-family: 'Inter', sans-serif;">
+            <div style="font-size:10px; font-weight:700; letter-spacing:1.2px; color:#a78bfa; text-transform:uppercase; margin-bottom:14px; display:flex; align-items:center; gap:6px;">⏱️ Visual Timeline</div>
+            <div style="display:flex; flex-direction:column; gap:10px; border-left:1.5px solid rgba(139,92,246,0.3); padding-left:10px; margin-left:6px;">
+              ${notesData.timeline.map(item => `
+                <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:4px;">
+                  <div style="font-size:10.5px; font-weight:700; color:#c4b5fd; background:rgba(139,92,246,0.15); padding:1px 5px; border-radius:3px; font-family:monospace; flex-shrink:0;">${escHtml(item.timestamp)}</div>
+                  <span style="font-size:11.5px; color:rgba(232,232,240,0.8); line-height:1.4;">${escHtml(item.topic)}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `
+      });
+    }
+
     // ── Blocks: Sections ──
     (notesData.sections || []).forEach((section, idx) => {
       const hasBullets = section.bulletPoints && section.bulletPoints.length > 0;
@@ -742,7 +831,7 @@ async function downloadNotes() {
       `;
 
       if (section.content) {
-        inner += `<p style="font-size:12.5px; color:rgba(232,232,240,0.75); line-height:1.75; margin:0 0 16px; padding-left:38px; font-family: 'Inter', sans-serif;">${escHtml(section.content)}</p>`;
+        inner += `<div style="font-size:12.5px; color:rgba(232,232,240,0.75); line-height:1.75; margin:0 0 16px; padding-left:38px; font-family: 'Inter', sans-serif;">${parseMarkdown(section.content)}</div>`;
       }
 
       if (hasBullets) {
@@ -751,7 +840,7 @@ async function downloadNotes() {
           ${section.bulletPoints.map(bp => `
             <div style="display:flex; gap:8px; margin-bottom:6px; align-items:flex-start;">
               <div style="width:5px; height:5px; border-radius:50%; background:linear-gradient(135deg,#8b5cf6,#ec4899); flex-shrink:0; margin-top:6px;"></div>
-              <span style="font-size:12px; color:rgba(232,232,240,0.8); line-height:1.6;">${escHtml(bp)}</span>
+              <span style="font-size:12px; color:rgba(232,232,240,0.8); line-height:1.6;">${parseMarkdown(bp)}</span>
             </div>
           `).join('')}
         </div>`;
@@ -837,6 +926,24 @@ async function downloadNotes() {
           html: rowHtml
         });
       }
+    }
+
+    // ── Block: Interview Questions ──
+    if (notesData.interviewQuestions && notesData.interviewQuestions.length > 0) {
+      blocks.push({
+        type: 'interview-questions',
+        html: `
+          <div style="padding:24px 30px; border-radius:12px; background:linear-gradient(135deg,rgba(236,72,153,0.06),rgba(236,72,153,0.02)); border:1px solid rgba(236,72,153,0.2); box-sizing:border-box; width:100%; font-family: 'Inter', sans-serif;">
+            <div style="font-size:10px; font-weight:700; letter-spacing:1.2px; color:#ec4899; text-transform:uppercase; margin-bottom:14px; display:flex; align-items:center; gap:6px;">💬 Interview Preparation Q&A</div>
+            ${notesData.interviewQuestions.map((iq, i) => `
+              <div style="margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.05); box-sizing:border-box;">
+                <div style="font-size:12px; font-weight:700; color:#f472b6; margin-bottom:4px;">Q${i+1}: ${escHtml(iq.question)}</div>
+                <div style="font-size:11.5px; color:rgba(232,232,240,0.7); line-height:1.5; padding-left:12px; border-left:1.5px solid rgba(236,72,153,0.35); font-family: 'Inter', sans-serif;">Answer: ${escHtml(iq.answer)}</div>
+              </div>
+            `).join('')}
+          </div>
+        `
+      });
     }
 
     // ── Pagination Grouping Algorithm ──
@@ -1059,3 +1166,102 @@ window.resetAll = function() {
   $('notesTakeaways').style.display = 'none';
   $('notesGlossary').style.display = 'none';
 };
+
+// ── Markdown Parser Helper ──
+function parseMarkdown(text) {
+  if (!text) return '';
+  // First escape HTML to prevent XSS
+  let html = escHtml(text);
+  
+  // Replace code blocks: ```lang ... ```
+  html = html.replace(/```(?:[a-zA-Z0-9_-]+)?\n([\s\S]*?)\n```/g, (match, p1) => {
+    return `<pre class="code-block" style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:12px; font-family:monospace; font-size:12px; overflow-x:auto; margin:12px 0; color:#a78bfa; box-sizing:border-box; white-space:pre-wrap; word-break:break-all;"><code style="font-family:monospace;">${p1}</code></pre>`;
+  });
+  
+  // Replace inline code: `code`
+  html = html.replace(/`([^`\n]+)`/g, '<code class="inline-code" style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:monospace; font-size:11.5px; color:#c4b5fd; border:1px solid rgba(255,255,255,0.03);">$1</code>');
+  
+  // Replace bold: **text**
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  
+  // Replace italic: *text*
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+  // Replace line breaks with br
+  html = html.replace(/\n/g, '<br/>');
+
+  return html;
+}
+
+// ── Job Polling Loop Helper ──
+function pollJob(jobId, mode, videoId) {
+  const checkStatus = async () => {
+    try {
+      const res = await fetch(`/api/job-status/${jobId}`);
+      if (!res.ok) throw new Error('Failed to fetch job status');
+      const data = await res.json();
+      
+      if (data.status === 'pending') {
+        $('progressBar').style.width = '5%';
+        $('loadingTitle').textContent = 'Job Pending...';
+        $('loadingSubtitle').textContent = 'Waiting in Render worker queue';
+        $('ls1').className = 'load-step active';
+      } else if (data.status === 'processing') {
+        // Map progress check marks dynamically
+        if (data.progress < 45) {
+          $('ls1').className = 'load-step active';
+          $('ls2').className = 'load-step';
+          $('ls3').className = 'load-step';
+        } else if (data.progress >= 45 && data.progress < 85) {
+          $('ls1').className = 'load-step done';
+          $('ls2').className = 'load-step active';
+          $('ls3').className = 'load-step';
+        } else {
+          $('ls1').className = 'load-step done';
+          $('ls2').className = 'load-step done';
+          $('ls3').className = 'load-step active';
+        }
+        
+        $('progressBar').style.width = `${data.progress}%`;
+        $('loadingTitle').textContent = data.current_step || 'Processing...';
+        
+        const remaining = data.estimated_time_remaining || 'Calculating...';
+        $('loadingSubtitle').textContent = `Remaining: ${remaining}`;
+      } else if (data.status === 'completed') {
+        $('progressBar').style.width = '100%';
+        ['ls1', 'ls2', 'ls3'].forEach(id => {
+          $(id).className = 'load-step done';
+        });
+        
+        setTimeout(() => {
+          hideLoading();
+          if (mode === 'quiz') {
+            quizData = data.result;
+            questions = data.result.questions;
+            renderQuiz(videoId);
+          } else {
+            notesData = data.result;
+            renderNotes(videoId);
+          }
+          $('generateBtn').disabled = false;
+        }, 500);
+        
+        return; // stop polling loop
+      } else if (data.status === 'failed') {
+        throw new Error(data.error || 'Job failed');
+      }
+      
+      // Keep polling every 2 seconds
+      setTimeout(checkStatus, 2000);
+      
+    } catch (err) {
+      hideLoading();
+      $('heroSection').style.display = 'block';
+      showError(err.message || 'Something went wrong. Please try again.');
+      $('generateBtn').disabled = false;
+    }
+  };
+  
+  // Start polling
+  setTimeout(checkStatus, 1000);
+}
