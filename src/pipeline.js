@@ -57,6 +57,7 @@ function getVideoMetadata(youtubeUrl, tempDir) {
       '--skip-download',
       '--dump-json',
       '--js-runtimes', 'node',
+      '--remote-components', 'ejs:github',
       youtubeUrl
     ];
     
@@ -114,6 +115,7 @@ function downloadVideo(youtubeUrl, outputPath, tempDir) {
       '-f', config.DOWNLOAD_QUALITY,
       '-o', outputPath,
       '--js-runtimes', 'node',
+      '--remote-components', 'ejs:github',
       youtubeUrl
     ];
     
