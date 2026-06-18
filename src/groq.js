@@ -17,7 +17,7 @@ async function transcribeAudio(audioFilePath) {
     }
     
     const transcription = await groq.audio.transcriptions.create({
-      file: fs.createReadStream(audioFilePath),
+      file: await Groq.toFile(fs.readFileSync(audioFilePath), 'audio.mp3'),
       model: config.WHISPER_MODEL
     });
     
