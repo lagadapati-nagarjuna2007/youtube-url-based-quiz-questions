@@ -47,15 +47,19 @@ async function transcribeAudio(audioFilePath, estimatedDurationSeconds) {
       // Use stream-based upload for compatibility and memory efficiency
       transcription = await groq.audio.transcriptions.create({
         file: fs.createReadStream(audioFilePath),
-        model: config.WHISPER_MODEL
+        model: config.WHISPER_MODEL,
+        response_format: 'verbose_json'
       });
       
       if (!transcription || !transcription.text) {
         throw new Error('Transcription returned an empty response.');
       }
       
-      console.log(`[Whisper] Attempt ${attempt} succeeded!`);
-      return transcription.text;
+      console.log(`[Whisper] Attempt ${attempt} succeeded! Got ${transcription.segments?.length || 0} segments.`);
+      return {
+        text: transcription.text,
+        segments: transcription.segments || []
+      };
       
     } catch (err) {
       lastError = err;
@@ -80,6 +84,8 @@ async function transcribeAudio(audioFilePath, estimatedDurationSeconds) {
  * @param {string} [params.model]
  * @param {number} [params.temperature]
  * @param {number} [params.maxTokens]
+ * @param {number} [params.transcriptLength]
+ * @param {number} [params.visionLength]
  * @returns {Promise<object>} - Parsed JSON object
  */
 async function callGroqLLM({
@@ -87,37 +93,72 @@ async function callGroqLLM({
   userPrompt,
   model = config.DEFAULT_REASONING_MODEL,
   temperature = 0.3,
-  maxTokens = 4000
+  maxTokens = 4000,
+  transcriptLength = 0,
+  visionLength = 0
 }) {
-  try {
-    const response = await groq.chat.completions.create({
-      model,
-      max_tokens: maxTokens,
-      temperature,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ]
-    });
-
-    let rawText = response.choices?.[0]?.message?.content || '';
-
-    // Strip markdown code fences if LLM wrapped it in ```json ... ```
-    rawText = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-    
-    const jsonStart = rawText.indexOf('{');
-    const jsonEnd = rawText.lastIndexOf('}');
-    
-    if (jsonStart === -1 || jsonEnd === -1) {
-      console.error('Raw content that failed JSON parsing:', rawText);
-      throw new Error('No valid JSON found in AI response');
+  const promptText = systemPrompt + '\n' + userPrompt;
+  const promptChars = promptText.length;
+  const estPromptTokens = Math.round(promptChars / 4);
+  
+  console.log(`[Groq LLM] Preparing request...`);
+  console.log(`[Groq LLM] - Transcript Chunk: ${transcriptLength} chars`);
+  console.log(`[Groq LLM] - Vision Chunk: ${visionLength} chars`);
+  console.log(`[Groq LLM] - Total Prompt: ${promptChars} chars (~${estPromptTokens} tokens)`);
+  
+  let attempt = 0;
+  const maxAttempts = 3;
+  let lastError = null;
+  
+  while (attempt < maxAttempts) {
+    try {
+      attempt++;
+      if (attempt > 1) {
+        console.log(`[Groq LLM] Attempt ${attempt} of ${maxAttempts}...`);
+      }
+      
+      const response = await groq.chat.completions.create({
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]
+      });
+      
+      let rawText = response.choices?.[0]?.message?.content || '';
+      const responseChars = rawText.length;
+      const estResponseTokens = Math.round(responseChars / 4);
+      console.log(`[Groq LLM] Success! Response size: ${responseChars} chars (~${estResponseTokens} tokens)`);
+      
+      // Strip markdown code fences if LLM wrapped it in ```json ... ```
+      rawText = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      
+      const jsonStart = rawText.indexOf('{');
+      const jsonEnd = rawText.lastIndexOf('}');
+      
+      if (jsonStart === -1 || jsonEnd === -1) {
+        console.error('Raw content that failed JSON parsing:', rawText);
+        throw new Error('No valid JSON found in AI response');
+      }
+      
+      const cleanJsonString = rawText.slice(jsonStart, jsonEnd + 1);
+      return JSON.parse(cleanJsonString);
+      
+    } catch (err) {
+      lastError = err;
+      console.error(`[Groq LLM] Attempt ${attempt} failed:`, err.message);
+      
+      if (attempt < maxAttempts) {
+        const delayMs = Math.pow(2, attempt) * 1000;
+        console.log(`[Groq LLM] Waiting ${delayMs / 1000}s before retrying...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
     }
-    
-    const cleanJsonString = rawText.slice(jsonStart, jsonEnd + 1);
-    return JSON.parse(cleanJsonString);
-  } catch (err) {
-    throw new Error(`Groq LLM completion failed: ${err.message}`);
   }
+  
+  throw new Error(`Groq LLM completion failed after ${maxAttempts} attempts. Last error: ${lastError.message}`);
 }
 
 module.exports = {

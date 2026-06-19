@@ -91,12 +91,13 @@ You must identify each frame by its timestamp and index.`
  */
 async function analyzeFrames(frames, onProgressUpdate = () => {}) {
   if (!frames || frames.length === 0) {
-    return { success: false, timelineLog: '', visualAnalysisState: 'unavailable' };
+    return { success: false, timelineLog: '', batchResults: [], visualAnalysisState: 'unavailable' };
   }
 
   console.log(`Starting visual analysis of ${frames.length} frames...`);
   const batchSize = config.FRAME_BATCH_SIZE;
   const results = [];
+  const batchResults = [];
   
   // Group frames into batches of size config.FRAME_BATCH_SIZE
   const batches = [];
@@ -116,32 +117,43 @@ async function analyzeFrames(frames, onProgressUpdate = () => {}) {
     console.log(statusMsg);
     onProgressUpdate(batchNum, batches.length, statusMsg);
 
+    let resultText = '';
     try {
       // 1. Try Primary Model
-      const resultText = await queryNvidiaModel(subBatch, config.PRIMARY_VISION_MODEL);
-      results.push(resultText);
+      resultText = await queryNvidiaModel(subBatch, config.PRIMARY_VISION_MODEL);
     } catch (primaryError) {
       console.warn(`Primary NVIDIA model failed on batch ${batchNum}: ${primaryError.message}. Retrying with fallback...`);
       
       try {
         // 2. Try Fallback Model
-        const resultText = await queryNvidiaModel(subBatch, config.FALLBACK_VISION_MODEL);
-        results.push(resultText);
+        resultText = await queryNvidiaModel(subBatch, config.FALLBACK_VISION_MODEL);
       } catch (fallbackError) {
         console.error(`Fallback NVIDIA model failed on batch ${batchNum} as well: ${fallbackError.message}`);
         
         // 3. Graceful degradation: do not crash the job, mark it as unavailable
         console.warn('⚠️ NVIDIA vision APIs are unavailable. Gracefully degrading to transcript-only mode.');
         visualAnalysisState = 'unavailable';
-        return { success: false, timelineLog: '', visualAnalysisState };
+        return { success: false, timelineLog: '', batchResults: [], visualAnalysisState };
       }
     }
+
+    results.push(resultText);
+
+    const timestamps = subBatch.map(f => f.timestampSeconds);
+    const minTime = Math.min(...timestamps);
+    const maxTime = Math.max(...timestamps);
+    batchResults.push({
+      text: resultText,
+      startSeconds: minTime,
+      endSeconds: maxTime
+    });
   }
 
   const combinedTimelineLog = results.join('\n\n');
   return {
     success: true,
     timelineLog: combinedTimelineLog,
+    batchResults,
     visualAnalysisState
   };
 }

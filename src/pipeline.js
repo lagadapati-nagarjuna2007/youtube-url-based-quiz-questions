@@ -334,7 +334,7 @@ async function runPipeline(jobId, youtubeUrl, jobType) {
     // ========================================================
     console.log(`[Job ${jobId}] Transcribing speech...`);
     await updateJob(jobId, { progress: 50, current_step: 'Transcribing speech' });
-    const transcriptText = await transcribeAudio(audioPath, metadata.duration);
+    const { text: transcriptText, segments: transcriptSegments } = await transcribeAudio(audioPath, metadata.duration);
 
     // ========================================================
     // STAGE 6: NVIDIA VISION FRAME ANALYSIS
@@ -352,107 +352,153 @@ async function runPipeline(jobId, youtubeUrl, jobType) {
     const visionResult = await analyzeFrames(frames, onNvidiaProgress);
     const hasVisuals = visionResult.success;
     const timelineLog = visionResult.timelineLog;
+    const batchResults = visionResult.batchResults || [];
     const visualAnalysisState = visionResult.visualAnalysisState;
 
     // ========================================================
-    // STAGE 7: CONTENT GENERATION (GROQ LLM)
+    // STAGE 7: CONTENT GENERATION (GROQ LLM CHUNKED)
     // ========================================================
-    console.log(`[Job ${jobId}] Generating content...`);
-    await updateJob(jobId, { progress: 85, current_step: 'Generating final notes and quizzes' });
+    console.log(`[Job ${jobId}] Generating content in chunks...`);
+    
+    // Dynamic Chunk Sizing:
+    // Video <= 20 minutes (1200 seconds): 5 minute chunks (300 seconds)
+    // Video 20-45 minutes: 4 minute chunks (240 seconds)
+    const chunkDuration = metadata.duration <= 1200 
+      ? config.CHUNK_DURATION_SHORT 
+      : config.CHUNK_DURATION_LONG;
+      
+    const numChunks = Math.max(1, Math.ceil(metadata.duration / chunkDuration));
+    console.log(`[Job ${jobId}] Dynamic Chunk Sizing: duration ${metadata.duration}s, chunk size ${chunkDuration}s, total chunks: ${numChunks}`);
 
+    const chunkResults = [];
     let finalResult = null;
 
-    if (jobType === 'notes') {
-      // ── Notes Generation Prompts ──
-      const systemPrompt = `You are an expert educational note-taker. Create comprehensive study notes. Always respond with valid raw JSON only — no markdown ticks, no backticks, no extra text.`;
+    for (let i = 0; i < numChunks; i++) {
+      const chunkStart = i * chunkDuration;
+      const chunkEnd = Math.min((i + 1) * chunkDuration, metadata.duration);
+      const chunkNum = i + 1;
       
-      let userPrompt = `You are a professional educational note-taker and teacher. Analyze the following video content and generate detailed, lecture-quality notes.
+      // Update UI Progress for each chunk. Scale progress from 80% to 95%
+      const chunkProgress = 80 + Math.round((i / numChunks) * 15);
+      const stepText = `Generating ${jobType === 'notes' ? 'Notes' : 'Quiz'} (Chunk ${chunkNum} of ${numChunks})`;
+      console.log(`[Job ${jobId}] Progress update: ${stepText} (${chunkProgress}%)`);
+      await updateJob(jobId, { progress: chunkProgress, current_step: stepText });
       
-VIDEO TRANSCRIPT:
+      // Filter transcript segments for this chunk
+      const chunkSegments = transcriptSegments.filter(s => s.start >= chunkStart && s.start < chunkEnd);
+      const chunkTranscriptText = chunkSegments.map(s => s.text).join(' ').trim();
+      
+      // Filter vision batch results overlapping with this chunk
+      const chunkVisionLog = batchResults
+        .filter(br => Math.max(br.startSeconds, chunkStart) <= Math.min(br.endSeconds, chunkEnd))
+        .map(br => br.text)
+        .join('\n\n')
+        .trim();
+        
+      console.log(`[Job ${jobId}] Chunk ${chunkNum}/${numChunks} boundaries: [${chunkStart}s - ${chunkEnd}s]`);
+      console.log(`[Job ${jobId}] Chunk ${chunkNum}/${numChunks} content sizes: transcript=${chunkTranscriptText.length} chars, vision=${chunkVisionLog.length} chars`);
+
+      if (jobType === 'notes') {
+        const systemPrompt = `You are an expert educational note-taker. Create comprehensive, detailed study notes for a specific chronological part of a video. Always respond with valid raw JSON only — no markdown ticks, no backticks, no extra text.`;
+        
+        let userPrompt = `You are a professional educational note-taker and teacher. Analyze the following video content segment and generate detailed, lecture-quality notes for this chronological part (Part ${chunkNum} of ${numChunks}).
+        
+IMPORTANT:
+- Do NOT aggressively summarize the content. Preserve all key technical details, detailed explanations, code blocks, terminal commands, terminal outputs, and examples.
+- Focus ONLY on the content within this chronological part.
+
+VIDEO TRANSCRIPT FOR PART ${chunkNum}:
 """
-${transcriptText}
+${chunkTranscriptText || '(No narration in this part)'}
 """
 `;
 
-      if (hasVisuals && timelineLog) {
-        userPrompt += `
+        if (hasVisuals && chunkVisionLog) {
+          userPrompt += `
 
-VISUAL TIMELINE AND OCR CONTENT (Captured from slides, terminal outputs, and code on screen):
+VISUAL TIMELINE AND OCR CONTENT FOR PART ${chunkNum} (From slides, code, and terminals on screen):
 """
-${timelineLog}
+${chunkVisionLog}
 """
 
 Instructions for Visual Content:
-1. Integrate the source code blocks, terminal commands, terminal outputs, slide details, and diagrams EXACTLY as they appear at their respective timestamps.
-2. In the notes sections, describe flowcharts, structures, and slides content clearly.
+1. Integrate any source code blocks, terminal commands, terminal outputs, slide details, and diagrams EXACTLY as they appear at their respective timestamps.
+2. Describe flowcharts, structures, and slides content clearly.
 `;
-      }
+        }
 
-      userPrompt += `
+        userPrompt += `
 
-Generate detailed study notes containing:
-1. "videoTitle": A precise title based on transcript and video content.
-2. "topic": Main topic.
-3. "topicsCovered": List of subtopics covered.
-4. "summary": A 3-4 sentence overview of the video.
-5. "timeline": Create a structured visual timeline mapping timestamps to major events or slide topics (e.g. 00:02:15 - "Intro to Node.js", 00:05:30 - "Express setup"). Output as an array of { "timestamp": "string", "topic": "string" }.
-6. "sections": Array of detailed notes sections. Each section must contain:
+Generate detailed study notes for this part containing:
+1. "chunkTitle": A precise title for this specific part of the video.
+2. "chunkSummary": A 2-3 sentence overview of this part.
+3. "timeline": Create a structured visual timeline mapping timestamps to slide topics or screen activities in this part. Output as an array of { "timestamp": "string", "topic": "string" }.
+4. "sections": Array of detailed notes sections for this part. Each section must contain:
    - "title": Section heading.
    - "content": Detailed notes in plain text, supporting markdown (like **bold**, italics, and code blocks using standard \`\`\`js ... \`\`\` backticks).
    - "definitions": Array of { "term": "string", "definition": "string" } for technical terms discussed in this section.
    - "bulletPoints": Key points summarized as a bulleted list.
-7. "keyTakeaways": A list of the most critical high-level takeaways.
-8. "importantTerms": A combined glossary of all key technical terms and definitions.
-9. "interviewQuestions": Create exactly 5-8 interview preparation questions based on this video content. Format as an array of { "question": "string", "answer": "string" }.
+5. "importantTerms": Glossary of key technical terms and definitions introduced in this part. Array of { "term": "string", "definition": "string" }.
+6. "interviewQuestions": Create exactly 2-3 interview preparation questions based on the content of this part. Format as an array of { "question": "string", "answer": "string" }.
 
 CRITICAL: Respond with ONLY a raw JSON object. Do not wrap in markdown \`\`\`json. Do not explain.
 `;
 
-      const notesResponse = await callGroqLLM({
-        systemPrompt,
-        userPrompt,
-        model: config.DEFAULT_REASONING_MODEL,
-        maxTokens: 6000,
-        temperature: 0.3
-      });
+        const chunkResponse = await callGroqLLM({
+          systemPrompt,
+          userPrompt,
+          model: config.DEFAULT_REASONING_MODEL,
+          maxTokens: 4000,
+          temperature: 0.3,
+          transcriptLength: chunkTranscriptText.length,
+          visionLength: chunkVisionLog.length
+        });
+        
+        chunkResults.push({
+          chunkTitle: chunkResponse.chunkTitle || `Part ${chunkNum}`,
+          chunkSummary: chunkResponse.chunkSummary || '',
+          timeline: chunkResponse.timeline || [],
+          sections: chunkResponse.sections || [],
+          importantTerms: chunkResponse.importantTerms || [],
+          interviewQuestions: chunkResponse.interviewQuestions || []
+        });
 
-      finalResult = notesResponse;
+      } else {
+        // Quiz Mode
+        const chunkQCount = Math.ceil(qCount / numChunks);
+        const systemPrompt = `You are an educational quiz creator. Create interactive questions based on video content. Always respond with valid raw JSON only — no markdown ticks, no backticks, no extra text.`;
+        
+        let userPrompt = `You are an expert quiz designer. Analyze the following video content segment and generate interactive quiz questions for this chronological part (Part ${chunkNum} of ${numChunks}).
+        
+IMPORTANT:
+- Focus ONLY on the concepts discussed or shown in this part.
+- Generate exactly ${chunkQCount} multiple-choice quiz questions based on the video content.
 
-    } else {
-      // ── Quiz Generation Prompts ──
-      const systemPrompt = `You are an educational quiz creator. Create interactive questions based on video content. Always respond with valid raw JSON only — no markdown ticks, no backticks, no extra text.`;
-      
-      let userPrompt = `You are an expert quiz designer. Analyze the following video content and generate an interactive quiz based on what was discussed or shown.
-      
-VIDEO TRANSCRIPT:
+VIDEO TRANSCRIPT FOR PART ${chunkNum}:
 """
-${transcriptText}
+${chunkTranscriptText || '(No narration in this part)'}
 """
 `;
 
-      if (hasVisuals && timelineLog) {
+        if (hasVisuals && chunkVisionLog) {
+          userPrompt += `
+
+VISUAL TIMELINE AND OCR CONTENT FOR PART ${chunkNum} (From slides, code, and terminals on screen):
+"""
+${chunkVisionLog}
+"""
+`;
+        }
+
         userPrompt += `
 
-VISUAL TIMELINE AND OCR CONTENT (From code, slides, and terminals on screen):
-"""
-${timelineLog}
-"""
-`;
-      }
-
-      userPrompt += `
-
-Generate exactly 8 multiple-choice quiz questions based on the video content.
 Rules:
 - Questions must test the concepts from both verbal narration and visual slides/code.
-- Include a variety of questions: conceptual, scenario-based, terminal commands, or code-reading (if present).
 - Provide a clear, educational explanation for the correct answer.
 
 JSON Output Schema:
 {
-  "videoTitle": "Precise title of the video",
-  "topic": "Main topic",
-  "topicsCovered": ["subtopic1", "subtopic2"],
+  "chunkTitle": "Title for this part",
   "questions": [
     {
       "question": "Question text here?",
@@ -466,19 +512,154 @@ JSON Output Schema:
 CRITICAL: Respond with ONLY a raw JSON object. Do not wrap in markdown \`\`\`json. Do not explain.
 `;
 
-      const quizResponse = await callGroqLLM({
-        systemPrompt,
-        userPrompt,
-        model: config.DEFAULT_REASONING_MODEL,
-        maxTokens: 4000,
-        temperature: 0.5
-      });
-
-      finalResult = quizResponse;
+        const chunkResponse = await callGroqLLM({
+          systemPrompt,
+          userPrompt,
+          model: config.DEFAULT_REASONING_MODEL,
+          maxTokens: 3000,
+          temperature: 0.5,
+          transcriptLength: chunkTranscriptText.length,
+          visionLength: chunkVisionLog.length
+        });
+        
+        chunkResults.push({
+          chunkTitle: chunkResponse.chunkTitle || `Part ${chunkNum}`,
+          questions: chunkResponse.questions || []
+        });
+      }
     }
 
     // ========================================================
-    // STAGE 8: COMPLETION & METADATA SAVE
+    // STAGE 8: MERGE RESULTS & GLOBAL SUMMARY (GROQ LLM)
+    // ========================================================
+    if (jobType === 'notes') {
+      console.log(`[Job ${jobId}] Merging study notes chunks...`);
+      await updateJob(jobId, { progress: 96, current_step: 'Compiling final study notes' });
+      
+      let mergedTimeline = [];
+      let mergedSections = [];
+      let mergedImportantTerms = [];
+      let mergedInterviewQuestions = [];
+      
+      chunkResults.forEach(chunk => {
+        if (chunk.timeline) mergedTimeline = mergedTimeline.concat(chunk.timeline);
+        if (chunk.sections) mergedSections = mergedSections.concat(chunk.sections);
+        if (chunk.importantTerms) mergedImportantTerms = mergedImportantTerms.concat(chunk.importantTerms);
+        if (chunk.interviewQuestions) mergedInterviewQuestions = mergedInterviewQuestions.concat(chunk.interviewQuestions);
+      });
+      
+      // De-duplicate terms by lowercased term name
+      const seenTerms = new Set();
+      const uniqueImportantTerms = [];
+      mergedImportantTerms.forEach(t => {
+        if (t && t.term) {
+          const key = t.term.toLowerCase().trim();
+          if (!seenTerms.has(key)) {
+            seenTerms.add(key);
+            uniqueImportantTerms.push(t);
+          }
+        }
+      });
+      
+      // Generate global metadata from titles/summaries
+      const chunksSummaryText = chunkResults
+        .map((chunk, idx) => `Part ${idx + 1} Title: ${chunk.chunkTitle}\nPart ${idx + 1} Summary: ${chunk.chunkSummary}`)
+        .join('\n\n');
+        
+      const globalSystemPrompt = `You are a professional educational editor. Review the titles and summaries of chronological parts of a lecture video, and generate a cohesive global overview. Always respond with valid raw JSON only.`;
+      
+      const globalUserPrompt = `Below are the titles and summaries of the chronological parts of a video lecture:
+${chunksSummaryText}
+
+Generate a global summary and overview of the entire video.
+Output Schema:
+{
+  "videoTitle": "A cohesive global title for the entire video",
+  "topic": "The main topic of the video",
+  "topicsCovered": ["Subtopic 1", "Subtopic 2", "Subtopic 3"],
+  "summary": "A 3-4 sentence comprehensive overview of the entire video.",
+  "keyTakeaways": [
+    "Most critical takeaway 1...",
+    "Most critical takeaway 2...",
+    "Most critical takeaway 3..."
+  ]
+}
+
+CRITICAL: Respond with ONLY a raw JSON object. Do not wrap in markdown \`\`\`json. Do not explain.
+`;
+
+      const globalData = await callGroqLLM({
+        systemPrompt: globalSystemPrompt,
+        userPrompt: globalUserPrompt,
+        model: config.DEFAULT_REASONING_MODEL,
+        maxTokens: 1500,
+        temperature: 0.3
+      });
+      
+      finalResult = {
+        videoTitle: globalData.videoTitle || metadata.title || 'Lecture Study Notes',
+        topic: globalData.topic || 'General Lecture',
+        topicsCovered: globalData.topicsCovered || [],
+        summary: globalData.summary || '',
+        keyTakeaways: globalData.keyTakeaways || [],
+        timeline: mergedTimeline,
+        sections: mergedSections,
+        importantTerms: uniqueImportantTerms,
+        interviewQuestions: mergedInterviewQuestions
+      };
+      
+    } else {
+      console.log(`[Job ${jobId}] Merging quiz questions chunks...`);
+      await updateJob(jobId, { progress: 96, current_step: 'Compiling final quiz' });
+      
+      let mergedQuestions = [];
+      chunkResults.forEach(chunk => {
+        if (chunk.questions) mergedQuestions = mergedQuestions.concat(chunk.questions);
+      });
+      
+      // Slice questions to target count
+      const slicedQuestions = mergedQuestions.slice(0, qCount);
+      console.log(`[Job ${jobId}] Merged ${mergedQuestions.length} quiz questions. Sliced to requested count of ${qCount}.`);
+      
+      // Generate global quiz metadata
+      const chunksSummaryText = chunkResults
+        .map((chunk, idx) => `Part ${idx + 1} Title: ${chunk.chunkTitle}`)
+        .join('\n');
+        
+      const globalSystemPrompt = `You are a professional quiz editor. Review the titles of chronological parts of a lecture video, and generate a cohesive global overview. Always respond with valid raw JSON only.`;
+      
+      const globalUserPrompt = `Below are the titles of the chronological parts of a video lecture:
+${chunksSummaryText}
+
+Generate the global title, main topic, and subtopics covered.
+Output Schema:
+{
+  "videoTitle": "A cohesive global title for the entire video",
+  "topic": "The main topic of the video",
+  "topicsCovered": ["Subtopic 1", "Subtopic 2", "Subtopic 3"]
+}
+
+CRITICAL: Respond with ONLY a raw JSON object. Do not wrap in markdown \`\`\`json. Do not explain.
+`;
+
+      const globalData = await callGroqLLM({
+        systemPrompt: globalSystemPrompt,
+        userPrompt: globalUserPrompt,
+        model: config.DEFAULT_REASONING_MODEL,
+        maxTokens: 1000,
+        temperature: 0.4
+      });
+      
+      finalResult = {
+        videoTitle: globalData.videoTitle || metadata.title || 'Lecture Quiz',
+        topic: globalData.topic || 'General Topic',
+        topicsCovered: globalData.topicsCovered || [],
+        questions: slicedQuestions
+      };
+    }
+
+    // ========================================================
+    // STAGE 9: COMPLETION & METADATA SAVE
     // ========================================================
     const elapsedTimeSeconds = Math.round((Date.now() - startTime) / 1000);
     
@@ -487,6 +668,7 @@ CRITICAL: Respond with ONLY a raw JSON object. Do not wrap in markdown \`\`\`jso
       visual_analysis: visualAnalysisState,
       frames_processed: frames.length,
       transcript_length: transcriptText.length,
+      chunk_count: numChunks,
       processing_time_seconds: elapsedTimeSeconds
     };
 

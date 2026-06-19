@@ -25,5 +25,9 @@ module.exports = {
   
   // Default Groq Reasoning Models
   DEFAULT_REASONING_MODEL: 'llama-3.3-70b-versatile',
-  FALLBACK_REASONING_MODEL: 'llama-3.3-70b-specdec'
+  FALLBACK_REASONING_MODEL: 'llama-3.3-70b-specdec',
+
+  // Dynamic Chunk-based processing settings
+  CHUNK_DURATION_SHORT: 300,  // 5 minutes for videos <= 20 minutes (1200 seconds)
+  CHUNK_DURATION_LONG: 240   // 4 minutes for videos 20-45 minutes
 };
