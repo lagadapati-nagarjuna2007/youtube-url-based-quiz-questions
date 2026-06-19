@@ -1239,7 +1239,9 @@ function pollJob(jobId, mode, videoId) {
         console.log("Completed Job Payload:", data);
         
         if (!data.result) {
-          throw new Error("Job completed but result payload is missing.");
+          const missingErr = new Error("Job completed but result payload is missing.");
+          missingErr.isExplicitJobFailure = true;
+          throw missingErr;
         }
         
         if (mode === 'notes') {
