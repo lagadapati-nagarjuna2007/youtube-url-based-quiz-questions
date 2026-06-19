@@ -184,5 +184,14 @@ app.get('/api/job-status/:jobId', statusLimiter, async (req, res) => {
 });
 
 app.listen(PORT, () => {
+  let groqVersion = 'unknown';
+  try {
+    groqVersion = require('groq-sdk/package.json').version;
+  } catch (e) {
+    try {
+      groqVersion = require(require.resolve('groq-sdk').replace('index.js', 'package.json')).version;
+    } catch (err) {}
+  }
   console.log(`🚀 QuizTube AI Express Server running on port ${PORT}`);
+  console.log(`ℹ️ Groq SDK version: ${groqVersion}`);
 });

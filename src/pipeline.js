@@ -312,6 +312,15 @@ async function runPipeline(jobId, youtubeUrl, jobType) {
     await updateJob(jobId, { progress: 25, current_step: 'Extracting audio' });
     await extractAudio(videoPath, audioPath);
 
+    if (!fs.existsSync(audioPath)) {
+      throw new Error('FFmpeg completed but the audio output file was not created.');
+    }
+    const audioStats = fs.statSync(audioPath);
+    if (audioStats.size === 0) {
+      throw new Error('FFmpeg completed but the audio output file is empty (0 bytes).');
+    }
+    console.log(`[Job ${jobId}] FFmpeg audio extraction verified. Output file size: ${audioStats.size} bytes.`);
+
     // ========================================================
     // STAGE 4: EXTRACT FRAMES WITH SCENE DETECTION
     // ========================================================
@@ -325,7 +334,7 @@ async function runPipeline(jobId, youtubeUrl, jobType) {
     // ========================================================
     console.log(`[Job ${jobId}] Transcribing speech...`);
     await updateJob(jobId, { progress: 50, current_step: 'Transcribing speech' });
-    const transcriptText = await transcribeAudio(audioPath);
+    const transcriptText = await transcribeAudio(audioPath, metadata.duration);
 
     // ========================================================
     // STAGE 6: NVIDIA VISION FRAME ANALYSIS
