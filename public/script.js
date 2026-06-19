@@ -1195,11 +1195,19 @@ function parseMarkdown(text) {
 
 // ── Job Polling Loop Helper ──
 function pollJob(jobId, mode, videoId) {
+  let consecutiveFailures = 0;
+  const maxConsecutiveFailures = 5;
+
   const checkStatus = async () => {
     try {
       const res = await fetch(`/api/job-status/${jobId}`);
-      if (!res.ok) throw new Error('Failed to fetch job status');
+      if (!res.ok) {
+        throw new Error(`Failed to fetch job status (Server returned ${res.status})`);
+      }
       const data = await res.json();
+      
+      // Reset failure counter on successful response
+      consecutiveFailures = 0;
       
       if (data.status === 'pending') {
         $('progressBar').style.width = '5%';
@@ -1248,17 +1256,39 @@ function pollJob(jobId, mode, videoId) {
         
         return; // stop polling loop
       } else if (data.status === 'failed') {
-        throw new Error(data.error || 'Job failed');
+        // Explicit backend failure: throw error to be handled in catch block
+        const errorMsg = data.error || 'Job failed';
+        const explicitErr = new Error(errorMsg);
+        explicitErr.isExplicitJobFailure = true;
+        throw explicitErr;
       }
       
       // Keep polling every 2 seconds
       setTimeout(checkStatus, 2000);
       
     } catch (err) {
-      hideLoading();
-      $('heroSection').style.display = 'block';
-      showError(err.message || 'Something went wrong. Please try again.');
-      $('generateBtn').disabled = false;
+      if (err.isExplicitJobFailure) {
+        // If the backend marked the job as failed, abort immediately
+        hideLoading();
+        $('heroSection').style.display = 'block';
+        showError(err.message);
+        $('generateBtn').disabled = false;
+        return;
+      }
+      
+      consecutiveFailures++;
+      console.warn(`[Poll] Temporary fetch failure (${consecutiveFailures}/${maxConsecutiveFailures}):`, err.message);
+      
+      if (consecutiveFailures >= maxConsecutiveFailures) {
+        // Exceeded maximum retries, fail the UI
+        hideLoading();
+        $('heroSection').style.display = 'block';
+        showError('Connection to server lost. Please check your internet or try again later.');
+        $('generateBtn').disabled = false;
+      } else {
+        // Retry polling after a 3-second delay
+        setTimeout(checkStatus, 3000);
+      }
     }
   };
   
