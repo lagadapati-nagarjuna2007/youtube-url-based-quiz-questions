@@ -1290,8 +1290,8 @@ function pollJob(jobId, mode, videoId) {
         throw explicitErr;
       }
       
-      // Keep polling every 2 seconds
-      setTimeout(checkStatus, 2000);
+      // Keep polling every 4 seconds
+      setTimeout(checkStatus, 4000);
       
     } catch (err) {
       if (err.isExplicitJobFailure) {

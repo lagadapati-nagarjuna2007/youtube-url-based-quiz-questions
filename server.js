@@ -28,10 +28,10 @@ const generateLimiter = rateLimit({
   message: { error: 'Too many requests from this IP. Please try again after 15 minutes.' }
 });
 
-// Rate Limiter: Job status polling endpoint (120 requests per 15 mins per IP)
+// Rate Limiter: Job status polling endpoint (1000 requests per 15 mins per IP)
 const statusLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 120,
+  limit: 1000,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many status check requests from this IP. Please try again after 15 minutes.' }
