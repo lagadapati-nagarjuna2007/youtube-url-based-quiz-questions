@@ -157,8 +157,8 @@ app.get('/api/job-status/:jobId', statusLimiter, async (req, res) => {
       return res.status(404).json({ error: 'Job not found.' });
     }
 
-    console.log("Job status request:", {
-      jobId,
+    console.log("Job status response:", {
+      id: job.id,
       status: job.status,
       hasResult: !!job.result,
       resultSize: job.result ? JSON.stringify(job.result).length : 0

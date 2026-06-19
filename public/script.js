@@ -1199,6 +1199,7 @@ function pollJob(jobId, mode, videoId) {
   const maxConsecutiveFailures = 5;
 
   const checkStatus = async () => {
+    console.log("Polling job:", jobId);
     try {
       const res = await fetch(`/api/job-status/${jobId}`);
       if (!res.ok) {
@@ -1206,6 +1207,11 @@ function pollJob(jobId, mode, videoId) {
       }
       const data = await res.json();
       
+      console.log("Received:", {
+        status: data.status,
+        hasResult: !!data.result
+      });
+
       // Reset failure counter on successful response
       consecutiveFailures = 0;
       

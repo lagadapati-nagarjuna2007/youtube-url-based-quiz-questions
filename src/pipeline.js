@@ -682,7 +682,7 @@ CRITICAL: Respond with ONLY a raw JSON object. Do not wrap in markdown \`\`\`jso
       questions: finalResult.questions?.length
     });
 
-    console.log(`[Job ${jobId}] Saving final result to Supabase...`);
+    console.log("Updating status to completed");
     const savedData = await updateJob(jobId, {
       status: 'completed',
       progress: 100,
@@ -696,6 +696,18 @@ CRITICAL: Respond with ONLY a raw JSON object. Do not wrap in markdown \`\`\`jso
       console.log("Result size:", JSON.stringify(savedData.result || {}).length);
     } else {
       console.error("Save failure: updateJob returned null/undefined.");
+    }
+
+    // Verify immediately after save by reading back from Supabase
+    try {
+      const verify = await getJob(jobId);
+      console.log("Immediate DB verify check:", {
+        status: verify ? verify.status : null,
+        hasResult: !!(verify && verify.result),
+        resultSize: (verify && verify.result) ? JSON.stringify(verify.result).length : 0
+      });
+    } catch (verifyErr) {
+      console.error("Verification read-back failed:", verifyErr.message);
     }
 
     console.log(`[Job ${jobId}] Job completed successfully in ${elapsedTimeSeconds} seconds.`);
