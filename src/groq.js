@@ -3,7 +3,10 @@ const fs = require('fs');
 const Groq = require('groq-sdk');
 const config = require('./config');
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const groq = new Groq({ 
+  apiKey: process.env.GROQ_API_KEY,
+  timeout: 5 * 60 * 1000 // 5 minutes in milliseconds to handle larger audio uploads on Render
+});
 
 /**
  * Transcribes audio file into text using Groq Whisper Large V3
