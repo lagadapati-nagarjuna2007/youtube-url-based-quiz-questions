@@ -157,6 +157,13 @@ app.get('/api/job-status/:jobId', statusLimiter, async (req, res) => {
       return res.status(404).json({ error: 'Job not found.' });
     }
 
+    console.log("Job status request:", {
+      jobId,
+      status: job.status,
+      hasResult: !!job.result,
+      resultSize: job.result ? JSON.stringify(job.result).length : 0
+    });
+
     // Calculate time remaining estimation dynamically
     let estimatedTimeRemaining = 'Calculating...';
     if (job.status === 'processing') {

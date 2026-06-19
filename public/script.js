@@ -1236,6 +1236,25 @@ function pollJob(jobId, mode, videoId) {
         const remaining = data.estimated_time_remaining || 'Calculating...';
         $('loadingSubtitle').textContent = `Remaining: ${remaining}`;
       } else if (data.status === 'completed') {
+        console.log("Completed Job Payload:", data);
+        
+        if (!data.result) {
+          throw new Error("Job completed but result payload is missing.");
+        }
+        
+        if (mode === 'notes') {
+          if (!data.result.sections) {
+            console.warn("Warning: data.result.sections is missing from completed job payload.");
+          }
+          if (!data.result.timeline) {
+            console.warn("Warning: data.result.timeline is missing from completed job payload.");
+          }
+        } else if (mode === 'quiz') {
+          if (!data.result.questions) {
+            console.warn("Warning: data.result.questions is missing from completed job payload.");
+          }
+        }
+
         $('progressBar').style.width = '100%';
         ['ls1', 'ls2', 'ls3'].forEach(id => {
           $(id).className = 'load-step done';

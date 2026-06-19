@@ -672,14 +672,33 @@ CRITICAL: Respond with ONLY a raw JSON object. Do not wrap in markdown \`\`\`jso
       processing_time_seconds: elapsedTimeSeconds
     };
 
-    console.log(`[Job ${jobId}] Job completed successfully in ${elapsedTimeSeconds} seconds.`);
-    await updateJob(jobId, {
+    console.log("Final result generated:", {
+      exists: !!finalResult,
+      size: finalResult ? JSON.stringify(finalResult).length : 0,
+      sections: finalResult.sections?.length,
+      timeline: finalResult.timeline?.length,
+      importantTerms: finalResult.importantTerms?.length,
+      interviewQuestions: finalResult.interviewQuestions?.length,
+      questions: finalResult.questions?.length
+    });
+
+    console.log(`[Job ${jobId}] Saving final result to Supabase...`);
+    const savedData = await updateJob(jobId, {
       status: 'completed',
       progress: 100,
       current_step: 'Completed',
       result: finalResult,
       error: null
     });
+
+    if (savedData) {
+      console.log("Result saved successfully");
+      console.log("Result size:", JSON.stringify(savedData.result || {}).length);
+    } else {
+      console.error("Save failure: updateJob returned null/undefined.");
+    }
+
+    console.log(`[Job ${jobId}] Job completed successfully in ${elapsedTimeSeconds} seconds.`);
 
   } catch (err) {
     console.error(`[Job ${jobId}] Failed:`, err.message);
